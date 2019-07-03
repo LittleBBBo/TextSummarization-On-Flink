@@ -21,3 +21,10 @@ Build an end-to-end application for abstractive document summarization on top of
 1. Build a complete application, connect TensorFlow <—> Flink-AI-Extended <—> Flink ML pipeline framework. Lessons learned from the perspective of MLlib users and developers.
 2. Found the disadvantages of Flink-AI-Extended and ML pipeline in use, design and implementation
 3. Suggestions and practical improvements for the disadvantages
+
+### References
+
+[Flink-AI-Extended: Extend deep learning framework on the Flink project](https://github.com/alibaba/flink-ai-extended)
+
+[Flink ML pipeline framework: A new set of ML core interface on top of Flink TableAPI](https://github.com/c4emmmm/flink/tree/flink-ml-export/flink-ml-parent)
+
