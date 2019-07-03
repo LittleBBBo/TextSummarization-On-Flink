@@ -14,7 +14,7 @@ Inside the estimator pipeline, an abstract TF estimator will be created on top o
 
 The design of the entire system is shown below:
 
-<img src="doc/design.pdf" alt="application design">
+![design](doc/design.pdf)
 
 ### Schedule (JUL 1st - AUG 2nd)
 
