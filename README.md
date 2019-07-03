@@ -1,8 +1,8 @@
-## Alibaba 2019 Summer Intern Mission
+## 2019 Summer Intern Mission
 
 ### Target
 
-Build an end-to-end application for abstractive document summarization on top of TensorFlow, Flink-AI-Extended and Flink ML pipeline framework.
+Build an end-to-end application for abstractive document summarization on top of TensorFlow, Flink-AI-Extended[^1] and Flink ML pipeline framework[^2].
 
 ### Schedule (JUL 1st - AUG 2nd)
 
@@ -24,7 +24,6 @@ Build an end-to-end application for abstractive document summarization on top of
 
 ### References
 
-[Flink-AI-Extended: Extend deep learning framework on the Flink project](https://github.com/alibaba/flink-ai-extended)
-
-[Flink ML pipeline framework: A new set of ML core interface on top of Flink TableAPI](https://github.com/c4emmmm/flink/tree/flink-ml-export/flink-ml-parent)
+[^1]: [Flink-AI-Extended: Extend deep learning framework on the Flink project](https://github.com/alibaba/flink-ai-extended)
+[^2]: [Flink ML pipeline framework: A new set of ML core interface on top of Flink TableAPI](https://github.com/c4emmmm/flink/tree/flink-ml-export/flink-ml-parent)
 
