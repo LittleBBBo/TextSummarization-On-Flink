@@ -7,4 +7,7 @@
 !/data/cnn-dailymail/README.md
 !/data/cnn-dailymail/url_lists
 
+/pointer-generator/*.pyc
 /log/**
+/venv/**
+/.idea/**
