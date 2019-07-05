@@ -1,0 +1,9 @@
+**/.DS_Store
+
+data/**
+!data/cnn-dailymail/LICENSE.md
+!data/cnn-dailymail/make_datafiles.py
+!data/cnn-dailymail/README.md
+!data/cnn-dailymail/url_lists
+
+log/**
