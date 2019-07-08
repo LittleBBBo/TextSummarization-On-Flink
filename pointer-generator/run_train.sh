@@ -1,2 +1,0 @@
-#!/usr/bin/env bash
-python run_summarization.py --mode=train --data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/train_* --vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab --log_root=/Users/bodeng/TextSummarization-On-Flink/log --exp_name=pretrained_model_tf1.2.1 --max_enc_steps=400 --max_dec_steps=100 --coverage=1
