@@ -10,4 +10,4 @@
 /pointer-generator/*.pyc
 /log/**
 /venv/**
-/.idea/**
+**/.idea/**
