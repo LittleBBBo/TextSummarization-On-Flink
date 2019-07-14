@@ -447,12 +447,13 @@ class FlinkBatcher(object):
         return article
 
     def build_graph(self):
-        self._iterator = self._input_iter(1)
-        self._next_batch = self._iterator.get_next()[0]
+        iterator = self._input_iter(1)
+        next_batch = iterator.get_next()
+        self._next_article = next_batch[0]
 
     def next_batch(self, sess):
         try:
-            article = sess.run([self._next_batch])
+            article = sess.run([self._next_article])
             example = Example(article[0], article, self._vocab, self._hps)  # Process into an Example.
             b = [example for _ in xrange(self._hps.batch_size)]
             return Batch(b, self._hps, self._vocab)
