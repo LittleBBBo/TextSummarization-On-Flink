@@ -9,5 +9,6 @@
 
 /pointer-generator/*.pyc
 /log/**
+/temp/**
 /venv/**
 **/.idea/**

@@ -29,6 +29,8 @@ import util
 import logging
 import shutil
 
+from flink_writer import AbstractWriter
+
 FLAGS = tf.app.flags.FLAGS
 
 SECS_UNTIL_NEW_CKPT = 60  # max number of seconds before loading new checkpoint
@@ -37,7 +39,7 @@ SECS_UNTIL_NEW_CKPT = 60  # max number of seconds before loading new checkpoint
 class BeamSearchDecoder(object):
     """Beam search decoder."""
 
-    def __init__(self, model, batcher, vocab, sess_config=None, server_target=None):
+    def __init__(self, model, batcher, vocab, sess_config=None, server_target=None, writer=AbstractWriter()):
         """Initialize decoder.
 
         Args:
@@ -48,6 +50,10 @@ class BeamSearchDecoder(object):
         self._model = model
         self._model.build_graph()
         self._batcher = batcher
+        self._batcher.build_graph()
+        self._writer = writer
+        self._writer.build_graph()
+        self._counter = 0
         self._vocab = vocab
         self._saver = tf.train.Saver() # we use this to load checkpoints for decoding
         if sess_config is None:
@@ -79,57 +85,103 @@ class BeamSearchDecoder(object):
             self._rouge_dec_dir = os.path.join(self._decode_dir, "decoded")
             if not os.path.exists(self._rouge_dec_dir): os.mkdir(self._rouge_dec_dir)
 
+    # def build_graph_for_flink(self):
+    #     self._flink_abstract = tf.placeholder(tf.string, [[1]], name='flink_abstract')
+    #     self._flink_reference = tf.placeholder(tf.string)
+    #
+    # def decode_on_flink(self, batch):
+
+
+    def decode_one_batch(self, batch, withRouge=True):
+        original_article = batch.original_articles[0]  # string
+        original_abstract = batch.original_abstracts[0]  # string
+        original_abstract_sents = batch.original_abstracts_sents[0]  # list of strings
+
+        article_withunks = data.show_art_oovs(original_article, self._vocab)  # string
+        abstract_withunks = data.show_abs_oovs(original_abstract, self._vocab,
+                                               (batch.art_oovs[0] if FLAGS.pointer_gen else None))  # string
+
+        # Run beam search to get best Hypothesis
+        best_hyp = beam_search.run_beam_search(self._sess, self._model, self._vocab, batch)
+
+        # Extract the output ids from the hypothesis and convert back to words
+        output_ids = [int(t) for t in best_hyp.tokens[1:]]
+        decoded_words = data.outputids2words(output_ids, self._vocab,
+                                             (batch.art_oovs[0] if FLAGS.pointer_gen else None))
+
+        # Remove the [STOP] token from decoded_words, if necessary
+        try:
+            fst_stop_idx = decoded_words.index(data.STOP_DECODING)  # index of the (first) [STOP] symbol
+            decoded_words = decoded_words[:fst_stop_idx]
+        except ValueError:
+            decoded_words = decoded_words
+        decoded_output = ' '.join(decoded_words)  # single string
+
+        if FLAGS.single_pass:
+            # write ref summary and decoded summary to file, to eval with pyrouge later
+            self.write_for_rouge(original_abstract_sents, decoded_words,self._counter)
+            self.write_for_flink(original_abstract_sents, decoded_words, self._counter)
+            self._counter += 1  # this is how many examples we've decoded
+        else:
+            print_results(article_withunks, abstract_withunks, decoded_output)  # log output to screen
+            self.write_for_attnvis(article_withunks, abstract_withunks, decoded_words, best_hyp.attn_dists,
+                                   best_hyp.p_gens)  # write info to .json file for visualization tool
 
     def decode(self, withRouge=True):
         """Decode examples until data is exhausted (if FLAGS.single_pass) and return, or decode indefinitely, loading latest checkpoint at regular intervals"""
         t0 = time.time()
-        counter = 0
+        self._counter = 0
         while True:
-            batch = self._batcher.next_batch()  # 1 example repeated across batch
-            if batch is None: # finished decoding dataset in single_pass mode
+            batch = self._batcher.next_batch(self._sess)  # 1 example repeated across batch
+            if batch is None:  # finished decoding dataset in single_pass mode
                 assert FLAGS.single_pass, "Dataset exhausted, but we are not in single_pass mode"
                 tf.logging.info("Decoder has finished reading dataset for single_pass.")
                 if withRouge:
-                    tf.logging.info("Output has been saved in %s and %s. Now starting ROUGE eval...", self._rouge_ref_dir, self._rouge_dec_dir)
+                    tf.logging.info("Output has been saved in %s and %s. Now starting ROUGE eval...",
+                                    self._rouge_ref_dir,
+                                    self._rouge_dec_dir)
                     results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
                     rouge_log(results_dict, self._decode_dir)
                 return
 
-            original_article = batch.original_articles[0]  # string
-            original_abstract = batch.original_abstracts[0]  # string
-            original_abstract_sents = batch.original_abstracts_sents[0]  # list of strings
-
-            article_withunks = data.show_art_oovs(original_article, self._vocab) # string
-            abstract_withunks = data.show_abs_oovs(original_abstract, self._vocab, (batch.art_oovs[0] if FLAGS.pointer_gen else None)) # string
-
-            # Run beam search to get best Hypothesis
-            best_hyp = beam_search.run_beam_search(self._sess, self._model, self._vocab, batch)
-
-            # Extract the output ids from the hypothesis and convert back to words
-            output_ids = [int(t) for t in best_hyp.tokens[1:]]
-            decoded_words = data.outputids2words(output_ids, self._vocab, (batch.art_oovs[0] if FLAGS.pointer_gen else None))
-
-            # Remove the [STOP] token from decoded_words, if necessary
-            try:
-                fst_stop_idx = decoded_words.index(data.STOP_DECODING) # index of the (first) [STOP] symbol
-                decoded_words = decoded_words[:fst_stop_idx]
-            except ValueError:
-                decoded_words = decoded_words
-            decoded_output = ' '.join(decoded_words) # single string
-
-            if FLAGS.single_pass:
-                self.write_for_rouge(original_abstract_sents, decoded_words, counter) # write ref summary and decoded summary to file, to eval with pyrouge later
-                counter += 1 # this is how many examples we've decoded
-            else:
-                print_results(article_withunks, abstract_withunks, decoded_output) # log output to screen
-                self.write_for_attnvis(article_withunks, abstract_withunks, decoded_words, best_hyp.attn_dists, best_hyp.p_gens) # write info to .json file for visualization tool
-
+            self.decode_one_batch(batch, withRouge)
+            if not FLAGS.single_pass:
                 # Check if SECS_UNTIL_NEW_CKPT has elapsed; if so return so we can load a new checkpoint
                 t1 = time.time()
-                if t1-t0 > SECS_UNTIL_NEW_CKPT:
-                    tf.logging.info('We\'ve been decoding with same checkpoint for %i seconds. Time to load new checkpoint', t1-t0)
+                if t1 - t0 > SECS_UNTIL_NEW_CKPT:
+                    tf.logging.info(
+                        'We\'ve been decoding with same checkpoint for %i seconds. Time to load new checkpoint',
+                        t1 - t0)
                     _ = util.load_ckpt(self._saver, self._sess)
                     t0 = time.time()
+
+    def write_for_flink(self, reference_sents, decoded_words, ex_index=0):
+        """
+        Write output to flink table. This is called in single_pass mode.
+        :param reference_sents: list of strings
+        :param decoded_words: list of strings
+        :return:
+        """
+        # First, divide decoded output into sentences
+        decoded_sents = []
+        while len(decoded_words) > 0:
+            try:
+                fst_period_idx = decoded_words.index(".")
+            except ValueError:  # there is text remaining that doesn't end in "."
+                fst_period_idx = len(decoded_words)
+            sent = decoded_words[:fst_period_idx + 1]  # sentence up to and including the period
+            decoded_words = decoded_words[fst_period_idx + 1:]  # everything else
+            decoded_sents.append(' '.join(sent))
+
+        # pyrouge calls a perl script that puts the data into HTML files.
+        # Therefore we need to make our output HTML safe.
+        decoded_sents = [make_html_safe(w) for w in decoded_sents]
+        reference_sents = [make_html_safe(w) for w in reference_sents]
+
+        decoded_result = "  ".join(decoded_sents)
+        reference_result = "  ".join(reference_sents)
+        self._writer.write_result(self._sess, decoded_result, reference_result)
+        tf.logging.info("Wrote example %i to flink" % ex_index)
 
     def write_for_rouge(self, reference_sents, decoded_words, ex_index):
         """Write output to file in correct format for eval with pyrouge. This is called in single_pass mode.

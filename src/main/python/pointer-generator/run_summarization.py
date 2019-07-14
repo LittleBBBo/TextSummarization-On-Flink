@@ -15,19 +15,29 @@
 # ==============================================================================
 
 """This is the top-level file to train, evaluate or test your summarization model"""
-
+import sys
 import time
 import os
+import traceback
+
 import tensorflow as tf
 import numpy as np
 from collections import namedtuple
+
+from tensorflow.python.framework.errors_impl import OutOfRangeError
+
 from data import Vocab
-from batcher import Batcher, RawTextBatcher
+from batcher import Batcher, RawTextBatcher, FlinkBatcher
+from flink_writer import FlinkWriter
 from model import SummarizationModel
 from decode import BeamSearchDecoder
 import util
 from tensorflow.python import debug as tf_debug
 from flink_ml_tensorflow.tensorflow_context import TFContext
+from tensorflow.python.summary.writer.writer_cache import FileWriterCache as SummaryWriterCache
+from flink_ml_tensorflow import tensorflow_on_flink_ops as tff_ops
+
+from train import FlinkTrainer
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -76,16 +86,16 @@ tf.app.flags.DEFINE_boolean('debug', False, "Run in tensorflow's debug mode (wat
 
 #         Inference          #
 # Standalone Flink-AI-Extended
-FLAGS.mode = 'decode'
-FLAGS.data_path = '/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test/0*'
-FLAGS.vocab_path = '/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab'
-FLAGS.log_root = '/Users/bodeng/TextSummarization-On-Flink/log'
-FLAGS.exp_name = 'pretrained_model_tf1.2.1'
-FLAGS.max_enc_steps = 400
-FLAGS.max_dec_steps = 100
-FLAGS.coverage = True
-FLAGS.single_pass = True
-FLAGS.inference = True
+# FLAGS.mode = 'decode'
+# FLAGS.data_path = '/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test/0*'
+# FLAGS.vocab_path = '/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab'
+# FLAGS.log_root = '/Users/bodeng/TextSummarization-On-Flink/log'
+# FLAGS.exp_name = 'pretrained_model_tf1.2.1'
+# FLAGS.max_enc_steps = 400
+# FLAGS.max_dec_steps = 100
+# FLAGS.coverage = True
+# FLAGS.single_pass = True
+# FLAGS.inference = True
 
 
 def calc_running_avg_loss(loss, running_avg_loss, summary_writer, step, decay=0.99):
@@ -278,22 +288,19 @@ def run_eval(model, batcher, vocab):
             summary_writer.flush()
 
 
-def main(unused_argv, sess_config=None, server_target=None):
-    # if len(unused_argv) != 1:  # prints a message if you've entered flags incorrectly
-    #     raise Exception("Problem with flags: %s" % unused_argv)
-
-    tf.logging.set_verbosity(tf.logging.INFO) # choose what level of logging you want
+def default_setup():
+    tf.logging.set_verbosity(tf.logging.INFO)  # choose what level of logging you want
     tf.logging.info('Starting seq2seq_attention in %s mode...', (FLAGS.mode))
 
     # Change log_root to FLAGS.log_root/FLAGS.exp_name and create the dir if necessary
     FLAGS.log_root = os.path.join(FLAGS.log_root, FLAGS.exp_name)
     if not os.path.exists(FLAGS.log_root):
-        if FLAGS.mode=="train":
+        if FLAGS.mode == "train":
             os.makedirs(FLAGS.log_root)
         else:
             raise Exception("Logdir %s doesn't exist. Run in train mode to create it." % (FLAGS.log_root))
 
-    vocab = Vocab(FLAGS.vocab_path, FLAGS.vocab_size) # create a vocabulary
+    vocab = Vocab(FLAGS.vocab_path, FLAGS.vocab_size)  # create a vocabulary
 
     # If in decode mode, set batch_size = beam_size
     # Reason: in decode mode, we decode one example at a time.
@@ -302,21 +309,33 @@ def main(unused_argv, sess_config=None, server_target=None):
         FLAGS.batch_size = FLAGS.beam_size
 
     # If single_pass=True, check we're in decode mode
-    if FLAGS.single_pass and FLAGS.mode!='decode':
+    if FLAGS.single_pass and FLAGS.mode != 'decode':
         raise Exception("The single_pass flag should only be True in decode mode")
 
     # Make a namedtuple hps, containing the values of the hyperparameters that the model needs
-    hparam_list = ['mode', 'inference', 'lr', 'adagrad_init_acc', 'rand_unif_init_mag', 'trunc_norm_init_std', 'max_grad_norm', 'hidden_dim', 'emb_dim', 'batch_size', 'max_dec_steps', 'max_enc_steps', 'coverage', 'cov_loss_wt', 'pointer_gen']
+    hparam_list = ['mode', 'lr', 'adagrad_init_acc', 'rand_unif_init_mag', 'trunc_norm_init_std',
+                   'max_grad_norm', 'hidden_dim', 'emb_dim', 'batch_size', 'max_dec_steps', 'max_enc_steps', 'coverage',
+                   'cov_loss_wt', 'pointer_gen', 'inference']
     hps_dict = {}
-    for key, val in FLAGS.__flags.iteritems(): # for each flag
+    for key, val in FLAGS.__flags.iteritems():  # for each flag
         if key in hparam_list:  # if it's in the list
             hps_dict[key] = val.value  # add it to the dict
     hps = namedtuple("HParams", hps_dict.keys())(**hps_dict)
 
-    tf.set_random_seed(111) # a seed value for randomness
+    tf.set_random_seed(111)  # a seed value for randomness
+    return vocab, hps
+
+
+def main(unused_argv, sess_config=None, server_target=None):
+    # if len(unused_argv) != 1:  # prints a message if you've entered flags incorrectly
+    #     raise Exception("Problem with flags: %s" % unused_argv)
+
+    vocab, hps = default_setup()
+
     if hps.inference:
         print "Inference Mode"
         batcher = RawTextBatcher(FLAGS.data_path, vocab, hps, single_pass=FLAGS.single_pass)
+
         decode_model_hps = hps  # This will be the hyperparameters for the decoder model
         decode_model_hps = hps._replace(
             max_dec_steps=1)  # The model is configured with max_dec_steps=1 because we only ever run one step of the decoder at a time (to do beam search). Note that the batcher is initialized with max_dec_steps equal to e.g. 100 because the batches need to contain the full summaries
@@ -344,8 +363,37 @@ def main(unused_argv, sess_config=None, server_target=None):
             raise ValueError("The 'mode' flag must be one of train/eval/decode")
 
 
+def training_on_flink(context, sess_config, server_target):
+    vocab, hps = default_setup()
+    if hps.mode == 'train':
+        batcher = Batcher(FLAGS.data_path, vocab, hps, single_pass=FLAGS.single_pass)
+        tf.logging.info("creating model...")
+        model = SummarizationModel(hps, vocab)
+        trainer = FlinkTrainer(model, batcher, sess_config, server_target)
+        trainer.train()
+    else:
+        raise ValueError("The 'mode' flag must be one of train/eval/decode")
+
+
+def inference_on_flink(context, sess_config, server_target):
+    vocab, hps = default_setup()
+    if hps.inference:
+        print "Inference Mode"
+        batcher = FlinkBatcher(context, vocab, hps, single_pass=FLAGS.single_pass)
+        writer = FlinkWriter(context)
+        decode_model_hps = hps  # This will be the hyperparameters for the decoder model
+        decode_model_hps = hps._replace(max_dec_steps=1)  # The model is configured with max_dec_steps=1 because we only ever run one step of the decoder at a time (to do beam search). Note that the batcher is initialized with max_dec_steps equal to e.g. 100 because the batches need to contain the full summaries
+        model = SummarizationModel(decode_model_hps, vocab)
+        decoder = BeamSearchDecoder(model, batcher, vocab) if sess_config is None else BeamSearchDecoder(model, batcher,
+                                                                                                         vocab,
+                                                                                                         sess_config,
+                                                                                                         server_target,
+                                                                                                         writer)
+
+        decoder.decode(withRouge=False)  # decode indefinitely (unless single_pass=True, in which case deocde the dataset exactly once)
+
+
 def main_on_flink(context):
-    print "hello"
     tf_context = TFContext(context)
     job_name = tf_context.get_role_name()
     index = tf_context.get_index()
@@ -355,14 +403,83 @@ def main_on_flink(context):
     server = tf.train.Server(cluster, job_name=job_name, task_index=index)
     sess_config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False,
                                  device_filters=["/job:ps", "/job:worker/task:%d" % index])
-    t = time.time()
     if 'ps' == job_name:
         from time import sleep
         while True:
             sleep(1)
     else:
         with tf.device(tf.train.replica_device_setter(worker_device='/job:worker/task:' + str(index), cluster=cluster)):
-            main(context, sess_config, server.target)
+            tf_hyperparameter = context.properties.get('TF_Hyperparameter')
+
+            argv = tf.app.flags.FLAGS(tf_hyperparameter.split(' '), known_only=True)  # Parse known flags.
+            print_log(FLAGS.mode)
+            if FLAGS.mode == 'train':
+                training_on_flink(tf_context, sess_config, server.target)
+            elif FLAGS.mode == 'decode':
+                inference_on_flink(tf_context, sess_config, server.target)
+            else:
+                raise ValueError("The 'mode' flag must be one of train/eval/decode")
+
+            # # Example Coding Demo
+            # iter = input_iter(tf_context, 1)
+            # next_batch = iter.get_next()
+            # write_feed = tf.placeholder(dtype=tf.string)
+            # write_op, close_op = tf_context.output_writer_op([write_feed])
+            # with tf.Session() as sess:
+            #     while True:
+            #         try:
+            #             abstract, reference = sess.run([next_batch[0], next_batch[0]])
+            #         except tf.errors.OutOfRangeError:
+            #             break
+            #         # for i in range(len(abstracts)):
+            #         example = tf.train.Example(features=tf.train.Features(
+            #             feature={
+            #                 'abstract': tf.train.Feature(bytes_list=tf.train.BytesList(value=[abstract])),
+            #                 'reference': tf.train.Feature(bytes_list=tf.train.BytesList(value=[reference])),
+            #             }
+            #         ))
+            #         sys.stdout.flush()
+            #         sess.run(write_op, feed_dict={write_feed: example.SerializeToString()})
+            #     sess.run(close_op)
+            #     SummaryWriterCache.clear()
+
+            # # Csv Coding Demo
+            # dataset = tf_context.flink_stream_dataset(buffer_size=0)
+            # delim = context.properties.get('SYS:delim')
+            # print (delim)
+            # dataset = dataset.map(lambda record: tf.decode_csv(record,
+            #                                                    record_defaults=[[tf.constant("article")]],
+            #                                                    field_delim=delim))
+            # dataset = dataset.batch(1)
+            # iterator = dataset.make_one_shot_iterator()
+            # input_records = iterator.get_next()
+            # print ("input_records shape: ", iterator.output_shapes)
+            # print ("input_records type: ", iterator.output_types)
+            # global_step = tf.contrib.framework.get_or_create_global_step()
+            # global_step_inc = tf.assign_add(global_step, 1)
+            # out = tff_ops.encode_csv(input_list=[[tf.constant('abstract')], input_records[0]], field_delim=delim)
+            # fw = tff_ops.FlinkTFRecordWriter(address=context.to_java())
+            # w = fw.write([out])
+            # try:
+            #     with tf.train.ChiefSessionCreator(master=server.target, config=sess_config).create_session() as mon_sess:
+            #         while True:
+            #             print (index, mon_sess.run([global_step_inc, w]))
+            #             sys.stdout.flush()
+            #             # time.sleep(1)
+            # except OutOfRangeError, e:
+            #     traceback.print_exc()
+            #     sys.stdout.flush()
+            # except Exception, e:
+            #     print 'traceback.print_exc():'
+            #     traceback.print_exc()
+            #     sys.stdout.flush()
+            #     raise e
+            # finally:
+            #     SummaryWriterCache.clear()
+
+
+def print_log(msg):
+    print msg
 
 
 if __name__ == '__main__':

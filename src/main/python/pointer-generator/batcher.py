@@ -22,6 +22,8 @@ from threading import Thread
 import time
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework.errors_impl import OutOfRangeError
+
 import data
 import nltk
 import glob
@@ -390,3 +392,84 @@ class RawTextBatcher(Batcher):
             self._example_queue.put(example)  # place the Example in the example queue.
         if self._single_pass:
             self._finished_reading = True
+
+
+class FlinkBatcher(object):
+    BATCH_QUEUE_MAX = 100
+
+    def __init__(self, context, vocab, hps, single_pass):
+        """Initialize the batcher. Start threads that process the data into batches.
+
+        Args:
+          data_path: tf.Example filepattern.
+          vocab: Vocabulary object
+          hps: hyperparameters
+          single_pass: If True, run through the dataset exactly once (useful for when you want to run evaluation on the dev or test set). Otherwise generate random batches indefinitely (useful for training).
+        """
+        self._context = context
+        self._vocab = vocab
+        self._hps = hps
+        self._single_pass = single_pass
+
+        # # Initialize a queue of Batches waiting to be used, and a queue of Examples waiting to be batched
+        # self._batch_queue = Queue.Queue(self.BATCH_QUEUE_MAX)
+        # self._example_queue = Queue.Queue(self.BATCH_QUEUE_MAX * self._hps.batch_size)
+        # with tf.Session() as sess:
+        #     try:
+        #         while True:
+        #             records = self._iterator.get_next()
+        #             article = sess.run(records)
+        #             print (str(article))
+        #             print (str(article[0]))
+        #             print (str(article[0][0]))
+        #             article = str(article[0][0])
+        #             example = Example(str(article), article, self._vocab, self._hps)  # Process into an Example.
+        #             if self._hps.mode == 'decode':
+        #                 # beam search decode mode
+        #                 b = [example for _ in xrange(self._hps.batch_size)]
+        #                 self._batch_queue.put(Batch(b, self._hps, self._vocab))
+        #     except OutOfRangeError, e:
+        #         e
+        # for elem in list(self._batch_queue.queue):
+        #     print (elem.original_articles[0])
+
+    def _input_iter(self, batch_size):
+        features = {'article': tf.FixedLenFeature([], tf.string)}
+        dataset = self._context.flink_stream_dataset()
+        dataset = dataset.map(lambda record: tf.parse_single_example(record, features=features))
+        dataset = dataset.map(self._decode)
+        dataset = dataset.batch(batch_size)
+        iterator = dataset.make_one_shot_iterator()
+        return iterator
+
+    def _decode(self, features):
+        article = features['article']
+        return article
+
+    def build_graph(self):
+        self._iterator = self._input_iter(1)
+        self._next_batch = self._iterator.get_next()[0]
+
+    def next_batch(self, sess):
+        try:
+            article = sess.run([self._next_batch])
+            example = Example(article[0], article, self._vocab, self._hps)  # Process into an Example.
+            b = [example for _ in xrange(self._hps.batch_size)]
+            return Batch(b, self._hps, self._vocab)
+        except tf.errors.OutOfRangeError:
+            return None
+        # if self._batch_queue.qsize() == 0:
+        #     return None
+        # return self._batch_queue.get()
+
+        #
+        # try:
+        #     records = self._iterator.get_next()
+        #     article = records[0]
+        #     example = Example(article, article, self._vocab, self._hps)  # Process into an Example.
+        #     if self._hps.mode == 'decode':
+        #         # beam search decode mode
+        #         b = [example for _ in xrange(self._hps.batch_size)]
+        #         return Batch(b, self._hps, self._vocab)
+        # except OutOfRangeError, e:
+        #     return None
