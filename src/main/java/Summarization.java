@@ -19,7 +19,6 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
@@ -53,88 +52,6 @@ public class Summarization {
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/flink_writer.py",
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/train.py",
     };
-
-    public static DataTypes typeInformationToDataTypes(TypeInformation typeInformation) throws RuntimeException {
-        if (typeInformation == BasicTypeInfo.STRING_TYPE_INFO) {
-            return DataTypes.STRING;
-        } else if (typeInformation == BasicTypeInfo.BOOLEAN_TYPE_INFO) {
-            return DataTypes.BOOL;
-        } else if (typeInformation == BasicTypeInfo.BYTE_TYPE_INFO) {
-            return DataTypes.INT_8;
-        } else if (typeInformation == BasicTypeInfo.SHORT_TYPE_INFO) {
-            return DataTypes.INT_16;
-        } else if (typeInformation == BasicTypeInfo.INT_TYPE_INFO) {
-            return DataTypes.INT_32;
-        } else if (typeInformation == BasicTypeInfo.LONG_TYPE_INFO) {
-            return DataTypes.INT_64;
-        } else if (typeInformation == BasicTypeInfo.FLOAT_TYPE_INFO) {
-            return DataTypes.FLOAT_32;
-        } else if (typeInformation == BasicTypeInfo.DOUBLE_TYPE_INFO) {
-            return DataTypes.FLOAT_64;
-        } else if (typeInformation == BasicTypeInfo.CHAR_TYPE_INFO) {
-            return DataTypes.UINT_16;
-        } else if (typeInformation == BasicTypeInfo.DATE_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicTypeInfo.VOID_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicTypeInfo.BIG_INT_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicTypeInfo.BIG_DEC_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicTypeInfo.INSTANT_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.STRING_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.BOOLEAN_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.BYTE_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.SHORT_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.INT_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.LONG_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.FLOAT_ARRAY_TYPE_INFO) {
-            return DataTypes.FLOAT_32_ARRAY;
-        } else if (typeInformation == BasicArrayTypeInfo.DOUBLE_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else if (typeInformation == BasicArrayTypeInfo.CHAR_ARRAY_TYPE_INFO) {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        } else {
-            throw new RuntimeException("Unsupported data type of " + typeInformation.toString());
-        }
-    }
-
-    private static void configureExampleCoding(TFConfig config, String[] encodeNames, TypeInformation[] encodeTypes,
-                                               String[] decodeNames, TypeInformation[] decodeTypes,
-                                               ObjectType entryType, Class entryClass) throws RuntimeException {
-        DataTypes[] encodeDataTypes = Arrays
-                .stream(encodeTypes)
-                .map(Summarization::typeInformationToDataTypes)
-                .toArray(DataTypes[]::new);
-        String strInput = ExampleCodingConfig.createExampleConfigStr(encodeNames, encodeDataTypes, entryType, entryClass);
-        config.getProperties().put(TFConstants.INPUT_TF_EXAMPLE_CONFIG, strInput);
-        LOG.info("input if example config: " + strInput);
-
-        DataTypes[] decodeDataTypes = Arrays
-                .stream(decodeTypes)
-                .map(Summarization::typeInformationToDataTypes)
-                .toArray(DataTypes[]::new);
-        String strOutput = ExampleCodingConfig.createExampleConfigStr(decodeNames, decodeDataTypes, entryType, entryClass);
-        config.getProperties().put(TFConstants.OUTPUT_TF_EXAMPLE_CONFIG, strOutput);
-        LOG.info("output if example config: " + strOutput);
-
-        config.getProperties().put(MLConstants.ENCODING_CLASS, ExampleCoding.class.getCanonicalName());
-        config.getProperties().put(MLConstants.DECODING_CLASS, ExampleCoding.class.getCanonicalName());
-    }
-
-    private static void configureExampleCoding(TFConfig config, TableSchema encodeSchema, TableSchema decodeSchema,
-                                               ObjectType entryType, Class entryClass) throws RuntimeException {
-        configureExampleCoding(config, encodeSchema.getFieldNames(), encodeSchema.getFieldTypes(),
-                decodeSchema.getFieldNames(), decodeSchema.getFieldTypes(),
-                entryType, entryClass);
-    }
 
     private static void setExampleCodingTypeRow(TFConfig config) {
         String[] names = {"article"};
@@ -187,7 +104,6 @@ public class Summarization {
 
         String inputTableFile = "/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test0.txt";
 
-
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
 //        tableEnv.registerFunction("LEN", new LEN());
@@ -204,14 +120,14 @@ public class Summarization {
 
         TableSchema outSchema = new TableSchema(new String[]{"abstract", "inference"},
                 new TypeInformation[]{BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO});
-        configureExampleCoding(config, input.getSchema(), outSchema, ObjectType.ROW, Row.class);
+        Utils.configureExampleCoding(config, input.getSchema(), outSchema, ObjectType.ROW, Row.class);
 //        input = input.select("LEN(article) as len, article");
         input.printSchema();
         tableEnv.toRetractStream(input, new RowTypeInfo(BasicTypeInfo.STRING_TYPE_INFO)).print();
 
-//        Table resultTable = TFUtils.inference(streamEnv, tableEnv, input, config, outSchema);
-//        tableEnv.toRetractStream(resultTable,
-//                new RowTypeInfo(BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO)).print();
+        Table resultTable = TFUtils.inference(streamEnv, tableEnv, input, config, outSchema);
+        tableEnv.toRetractStream(resultTable,
+                new RowTypeInfo(BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO)).print();
         streamEnv.execute();
 
         server.stop();

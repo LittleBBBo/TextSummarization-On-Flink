@@ -17,6 +17,7 @@
 """This file contains code to process data into batches"""
 
 import Queue
+from abc import ABCMeta, abstractmethod
 from random import shuffle
 from threading import Thread
 import time
@@ -474,3 +475,71 @@ class FlinkBatcher(object):
         #         return Batch(b, self._hps, self._vocab)
         # except OutOfRangeError, e:
         #     return None
+
+
+class AbstractFlinkReader(object):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, context, batch_size=1):
+        """
+        Initialize the batch reader
+        :param context: TFContext
+        """
+        self._context = context
+        self._batch_size = batch_size
+        self._build_graph()
+
+    @abstractmethod
+    def _features(self):
+        # TODO: Implement this function using context automatically
+        """
+        Examples:
+        ```
+        features = {'article': tf.FixedLenFeature([], tf.string)}
+        return features
+        ```
+
+        :return: A `dict` mapping feature keys to `FixedLenFeature`, `VarLenFeature`, and `SparseFeature` values.
+        """
+        pass
+
+    @abstractmethod
+    def _decode(self, features):
+        # TODO: Implement this function using context automatically
+        """
+        Each feature in features is `Tensor` of type `string`,
+        this func is to decode them to `Tensor` of right type.
+
+        Examples:
+        ```
+        image = tf.decode_raw(features['image_raw'], tf.uint8)
+        label = tf.one_hot(features['label'], 10, on_value=1)
+        article = features['article']
+
+        return image, label, article
+        ```
+
+        :param features: A `list` of `Tensor` of type `string`
+        :return: A `list` of `Tensor` of right type
+        """
+        pass
+
+    def _build_graph(self):
+        dataset = self._context.flink_stream_dataset()
+        dataset = dataset.map(lambda record: tf.parse_single_example(record, features=self._features()))
+        dataset = dataset.map(self._decode)
+        dataset = dataset.batch(self._batch_size)
+        iterator = dataset.make_one_shot_iterator()
+        self._next_batch = iterator.get_next()
+
+    def next_batch(self, sess):
+        """
+        use session to get next batch
+        :param sess: the session to execute operator
+        :return:
+        """
+        try:
+            batch = sess.run([self._next_batch])
+            return batch
+        except tf.errors.OutOfRangeError:
+            return None
