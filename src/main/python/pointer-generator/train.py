@@ -10,7 +10,8 @@ FLAGS = tf.app.flags.FLAGS
 
 
 class FlinkTrainer(object):
-    def __init__(self, model, batcher, sess_config, server_target):
+    def __init__(self, hps, model, batcher, sess_config, server_target):
+        self._hps = hps
         self._model = model
         self._batcher = batcher
 
@@ -19,13 +20,18 @@ class FlinkTrainer(object):
 
         self._model.build_graph()
         scaffold = tf.train.Scaffold(saver=tf.train.Saver(max_to_keep=3))
+        hooks = None
+        if hps.num_steps > 0:
+            hooks = [tf.train.StopAtStepHook(num_steps=hps.num_steps)]
+
         self._sess = tf.train.MonitoredTrainingSession(master=server_target,
                                                        is_chief=True,
                                                        config=sess_config,
                                                        checkpoint_dir=train_dir,
                                                        save_checkpoint_secs=60,
                                                        save_summaries_secs=60,
-                                                       scaffold=scaffold)
+                                                       scaffold=scaffold,
+                                                       hooks=hooks)
         self._summary_writer = SummaryWriterCache.get(train_dir)
         tf.logging.info("Created session.")
 
@@ -35,7 +41,7 @@ class FlinkTrainer(object):
     def train(self):
         tf.logging.info("starting run_training")
         try:
-            while True:
+            while not self._sess.should_stop():
                 batch = self._batcher.next_batch()
                 tf.logging.info('running training step...')
                 t0 = time.time()

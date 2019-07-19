@@ -1,10 +1,4 @@
-import com.alibaba.flink.ml.cluster.MLConfig;
-import com.alibaba.flink.ml.cluster.role.AMRole;
-import com.alibaba.flink.ml.cluster.role.PsRole;
-import com.alibaba.flink.ml.cluster.role.WorkerRole;
-import com.alibaba.flink.ml.operator.client.FlinkJobHelper;
 import com.alibaba.flink.ml.operator.coding.RowCSVCoding;
-import com.alibaba.flink.ml.operator.util.DataTypes;
 import com.alibaba.flink.ml.tensorflow.client.TFConfig;
 import com.alibaba.flink.ml.tensorflow.client.TFUtils;
 import com.alibaba.flink.ml.tensorflow.coding.ExampleCoding;
@@ -13,27 +7,21 @@ import com.alibaba.flink.ml.tensorflow.coding.ExampleCodingConfig.ObjectType;
 import com.alibaba.flink.ml.tensorflow.util.TFConstants;
 import com.alibaba.flink.ml.util.MLConstants;
 import org.apache.curator.test.TestingServer;
-import org.apache.flink.api.common.JobExecutionResult;
-import org.apache.flink.api.common.typeinfo.BasicArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.java.BatchTableEnvironment;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
-import org.apache.flink.table.functions.ScalarFunction;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.ml.lib.tensorflow.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.activation.UnsupportedDataTypeException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class Summarization {
     private static Logger LOG = LoggerFactory.getLogger(Summarization.class);
@@ -59,7 +47,7 @@ public class Summarization {
         String strInput = ExampleCodingConfig.createExampleConfigStr(names, types,
                 ExampleCodingConfig.ObjectType.ROW, String.class);
         config.getProperties().put(TFConstants.INPUT_TF_EXAMPLE_CONFIG, strInput);
-        LOG.info("input if example config: " + strInput);
+        LOG.info("input tf example config: " + strInput);
 
         String[] namesOutput = {"abstract", "reference"};
         com.alibaba.flink.ml.operator.util.DataTypes[] typesOutput = {com.alibaba.flink.ml.operator.util.DataTypes.STRING,
@@ -67,7 +55,7 @@ public class Summarization {
         String strOutput = ExampleCodingConfig.createExampleConfigStr(namesOutput, typesOutput,
                 ExampleCodingConfig.ObjectType.ROW, String.class);
         config.getProperties().put(TFConstants.OUTPUT_TF_EXAMPLE_CONFIG, strOutput);
-        LOG.info("output if example config: " + strOutput);
+        LOG.info("output tf example config: " + strOutput);
 
         config.getProperties().put(MLConstants.ENCODING_CLASS, ExampleCoding.class.getCanonicalName());
         config.getProperties().put(MLConstants.DECODING_CLASS, ExampleCoding.class.getCanonicalName());
@@ -102,12 +90,10 @@ public class Summarization {
                 "--inference=1",
         };
 
-        String inputTableFile = "/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test0.txt";
-
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
 //        tableEnv.registerFunction("LEN", new LEN());
-        Table input = tableEnv.fromDataStream(streamEnv.readTextFile(inputTableFile), "article");
+        Table input = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()), "article");
 
         // if zookeeper has other address
         Map<String, String> prop = new HashMap<>();
@@ -118,9 +104,9 @@ public class Summarization {
 //        setCsvCodingTypeRow(config);
 //        setExampleCodingTypeRow(config);
 
-        TableSchema outSchema = new TableSchema(new String[]{"abstract", "inference"},
+        TableSchema outSchema = new TableSchema(new String[]{"abstract", "reference"},
                 new TypeInformation[]{BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO});
-        Utils.configureExampleCoding(config, input.getSchema(), outSchema, ObjectType.ROW, Row.class);
+        Utils.configureExampleCoding(config, input.getSchema(), outSchema, ObjectType.ROW, String.class);
 //        input = input.select("LEN(article) as len, article");
         input.printSchema();
         tableEnv.toRetractStream(input, new RowTypeInfo(BasicTypeInfo.STRING_TYPE_INFO)).print();
@@ -146,9 +132,11 @@ public class Summarization {
                 "--max_enc_steps=400",
                 "--max_dec_steps=100",
                 "--coverage=1",
+                "--num_steps=3",
         };
 
-        StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment();
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
 
         // if zookeeper has other address
@@ -163,8 +151,13 @@ public class Summarization {
         server.stop();
     }
 
-    public static void main(String args[]) throws Exception {
-//        training();
-        inference();
+    private static List<String> createArticleData() {
+        return Arrays.asList("article 1.", "article 2.", "article 3.", "article 4.", "article 5.",
+                "article 6.", "article 7.", "article 8.", "article 9.", "article 10.");
+    }
+
+    public static void main(String[] args) throws Exception {
+        training();
+//        inference();
     }
 }
