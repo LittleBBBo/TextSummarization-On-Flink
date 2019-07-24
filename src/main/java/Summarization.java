@@ -125,7 +125,7 @@ public class Summarization {
         String[] hyperparameter = {
                 "run_summarization.py", // first param is uesless but required
                 "--mode=train",
-                "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/test_*",
+                "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/train_*",
                 "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
                 "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
                 "--exp_name=pretrained_model_tf1.2.1",

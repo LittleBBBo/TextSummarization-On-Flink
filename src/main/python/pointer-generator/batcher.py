@@ -395,9 +395,22 @@ class RawTextBatcher(Batcher):
             self._finished_reading = True
 
 
-class FlinkBatcher(object):
-    BATCH_QUEUE_MAX = 100
+class FlinkExample(Example):
+    def __init__(self, uuid, article, abstract_sentences, vocab, hps):
+        Example.__init__(self, article, abstract_sentences, vocab, hps)
+        self.uuid = uuid
 
+
+class FlinkBatch(Batch):
+    def store_orig_strings(self, example_list):
+        """Store the original article and abstract strings in the Batch object"""
+        self.original_articles = [ex.original_article for ex in example_list] # list of lists
+        self.original_abstracts = [ex.original_abstract for ex in example_list] # list of lists
+        self.original_abstracts_sents = [ex.original_abstract_sents for ex in example_list] # list of list of lists
+        self.uuids = [ex.uuid for ex in example_list]
+
+
+class FlinkBatcher(object):
     def __init__(self, context, vocab, hps, single_pass):
         """Initialize the batcher. Start threads that process the data into batches.
 
@@ -412,30 +425,10 @@ class FlinkBatcher(object):
         self._hps = hps
         self._single_pass = single_pass
 
-        # # Initialize a queue of Batches waiting to be used, and a queue of Examples waiting to be batched
-        # self._batch_queue = Queue.Queue(self.BATCH_QUEUE_MAX)
-        # self._example_queue = Queue.Queue(self.BATCH_QUEUE_MAX * self._hps.batch_size)
-        # with tf.Session() as sess:
-        #     try:
-        #         while True:
-        #             records = self._iterator.get_next()
-        #             article = sess.run(records)
-        #             print (str(article))
-        #             print (str(article[0]))
-        #             print (str(article[0][0]))
-        #             article = str(article[0][0])
-        #             example = Example(str(article), article, self._vocab, self._hps)  # Process into an Example.
-        #             if self._hps.mode == 'decode':
-        #                 # beam search decode mode
-        #                 b = [example for _ in xrange(self._hps.batch_size)]
-        #                 self._batch_queue.put(Batch(b, self._hps, self._vocab))
-        #     except OutOfRangeError, e:
-        #         e
-        # for elem in list(self._batch_queue.queue):
-        #     print (elem.original_articles[0])
-
     def _input_iter(self, batch_size):
-        features = {'article': tf.FixedLenFeature([], tf.string)}
+        features = {'uuid': tf.FixedLenFeature([], tf.string),
+                    'article': tf.FixedLenFeature([], tf.string),
+                    'reference': tf.FixedLenFeature([], tf.string)}
         dataset = self._context.flink_stream_dataset()
         dataset = dataset.map(lambda record: tf.parse_single_example(record, features=features))
         dataset = dataset.map(self._decode)
@@ -444,37 +437,35 @@ class FlinkBatcher(object):
         return iterator
 
     def _decode(self, features):
+        uuid = features['uuid']
         article = features['article']
-        return article
+        reference = features['reference']
+        return uuid, article, reference
 
     def build_graph(self):
-        iterator = self._input_iter(1)
+        iterator = self._input_iter(batch_size=4)
         next_batch = iterator.get_next()
-        self._next_article = next_batch[0]
+        print next_batch
+        self._next_uuid = next_batch[0]
+        self._next_article = next_batch[1]
+        self._next_reference = next_batch[2]
 
     def next_batch(self, sess):
         try:
-            article = sess.run([self._next_article])
-            example = Example(article[0], article, self._vocab, self._hps)  # Process into an Example.
+            uuid, article, reference = sess.run([self._next_uuid, self._next_article, self._next_reference])
+            tf.logging.info("input uuid: " + str(uuid))
+            tf.logging.info("input reference: " + str(reference))
+            uuid = uuid[0]
+            article = article[0]
+            reference = reference[0]
+            tf.logging.info("input reference: " + str(reference))
+            abstract_sentences = [' '.join(nltk.word_tokenize(sent)) for sent in nltk.sent_tokenize(reference)]
+            tf.logging.info("extracted reference: " + str(abstract_sentences))
+            example = FlinkExample(uuid, article, abstract_sentences, self._vocab, self._hps)  # Process into an Example.
             b = [example for _ in xrange(self._hps.batch_size)]
-            return Batch(b, self._hps, self._vocab)
+            return FlinkBatch(b, self._hps, self._vocab)
         except tf.errors.OutOfRangeError:
             return None
-        # if self._batch_queue.qsize() == 0:
-        #     return None
-        # return self._batch_queue.get()
-
-        #
-        # try:
-        #     records = self._iterator.get_next()
-        #     article = records[0]
-        #     example = Example(article, article, self._vocab, self._hps)  # Process into an Example.
-        #     if self._hps.mode == 'decode':
-        #         # beam search decode mode
-        #         b = [example for _ in xrange(self._hps.batch_size)]
-        #         return Batch(b, self._hps, self._vocab)
-        # except OutOfRangeError, e:
-        #     return None
 
 
 class AbstractFlinkReader(object):
@@ -488,6 +479,7 @@ class AbstractFlinkReader(object):
         self._context = context
         self._batch_size = batch_size
         self._build_graph()
+        self._sess = tf.Session()
 
     @abstractmethod
     def _features(self):
@@ -532,14 +524,126 @@ class AbstractFlinkReader(object):
         iterator = dataset.make_one_shot_iterator()
         self._next_batch = iterator.get_next()
 
-    def next_batch(self, sess):
+    def next_batch(self):
+        """
+        use session to get next batch
+        :return:
+        """
+        try:
+            batch = self._sess.run(self._next_batch)
+            return batch
+        except tf.errors.OutOfRangeError:
+            return None
+
+
+class FlinkInferenceBatcher(AbstractFlinkReader):
+    def __init__(self, context, vocab, hps):
+        """Initialize the batcher. Start threads that process the data into batches.
+
+        Args:
+          data_path: tf.Example filepattern.
+          vocab: Vocabulary object
+          hps: hyperparameters
+          single_pass: If True, run through the dataset exactly once (useful for when you want to run evaluation on the dev or test set). Otherwise generate random batches indefinitely (useful for training).
+        """
+        AbstractFlinkReader.__init__(self, context, batch_size=1)
+        self._context = context
+        self._vocab = vocab
+        self._hps = hps
+
+    def _features(self):
+        return {'uuid': tf.FixedLenFeature([], tf.string),
+                'article': tf.FixedLenFeature([], tf.string),
+                'reference': tf.FixedLenFeature([], tf.string)}
+
+    def _decode(self, features):
+        uuid = features['uuid']
+        article = features['article']
+        reference = features['reference']
+        return uuid, article, reference
+
+    def next_batch(self):
         """
         use session to get next batch
         :param sess: the session to execute operator
         :return:
         """
         try:
-            batch = sess.run([self._next_batch])
-            return batch
+            batch = self._sess.run(self._next_batch)
+            uuid, article, reference = batch[0], batch[1], batch[2]
+            tf.logging.info("input uuid: " + str(uuid))
+            tf.logging.info("input reference: " + str(reference))
+            uuid = uuid[0]
+            article = article[0]
+            reference = reference[0]
+            abstract_sentences = [' '.join(nltk.word_tokenize(sent)) for sent in nltk.sent_tokenize(reference)]
+            # tf.logging.info("extracted reference: " + str(abstract_sentences))
+            example = FlinkExample(uuid, article, abstract_sentences, self._vocab, self._hps)  # Process into an Example.
+            b = [example for _ in xrange(self._hps.batch_size)]
+            return FlinkBatch(b, self._hps, self._vocab)
+        except tf.errors.OutOfRangeError:
+            return None
+
+
+class FlinkTrainBatcher(AbstractFlinkReader):
+    def __init__(self, context, vocab, hps):
+        """
+        Initialize the batcher. Start threads that process the data into batches.
+
+        Args:
+          context: tf context
+          vocab: Vocabulary object
+          hps: hyperparameters
+        """
+        AbstractFlinkReader.__init__(self, context, batch_size=hps.batch_size)
+        self._context = context
+        self._vocab = vocab
+        self._hps = hps
+
+    def _build_graph(self):
+        dataset = self._context.flink_stream_dataset()
+        dataset = dataset.map(lambda record: tf.parse_single_example(record, features=self._features()))
+        dataset = dataset.map(self._decode)
+        dataset = dataset.batch(self._batch_size)
+        iterator = dataset.make_one_shot_iterator()
+        self._next_batch = iterator.get_next()
+        # self._uuids = self._next_batch[0]
+        # self._articles = self._next_batch[1]
+        # self._references = self._next_batch[2]
+        tf.logging.info("batch size: " + str(self._batch_size))
+
+    def _features(self):
+        return {'uuid': tf.FixedLenFeature([], tf.string),
+                'article': tf.FixedLenFeature([], tf.string),
+                'reference': tf.FixedLenFeature([], tf.string)}
+
+    def _decode(self, features):
+        uuid = features['uuid']
+        article = features['article']
+        reference = features['reference']
+        return uuid, article, reference
+
+    def next_batch(self):
+        """
+        use session to get next batch
+        :param sess: the session to execute operator
+        :return:
+        """
+        try:
+            batch = self._sess.run(self._next_batch)
+            uuids, articles, references = batch[0], batch[1], batch[2]
+            # (uuids, articles, references) = self._sess.run([self._uuids, self._articles, self._references])
+            tf.logging.info("input uuid: " + str(uuids))
+
+            examples = []
+            for i in range(self._hps.batch_size):
+                uuid = uuids[i]
+                article = articles[i]
+                reference = references[i]
+                abstract_sentences = [' '.join(nltk.word_tokenize(sent)) for sent in nltk.sent_tokenize(reference)]
+                example = FlinkExample(uuid, article, abstract_sentences, self._vocab, self._hps)  # Process into an Example.
+                examples.append(example)
+
+            return FlinkBatch(examples, self._hps, self._vocab)
         except tf.errors.OutOfRangeError:
             return None

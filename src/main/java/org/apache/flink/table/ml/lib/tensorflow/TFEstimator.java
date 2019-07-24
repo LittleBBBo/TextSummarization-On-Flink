@@ -4,6 +4,8 @@ import com.alibaba.flink.ml.tensorflow.client.TFConfig;
 import com.alibaba.flink.ml.tensorflow.client.TFUtils;
 import com.alibaba.flink.ml.tensorflow.coding.ExampleCodingConfig;
 import com.alibaba.flink.ml.util.MLConstants;
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.api.core.Estimator;
 import org.apache.flink.ml.api.misc.param.Params;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -35,7 +37,8 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
     }
     protected TableSchema configureOutputSchema() {
         if (getTrainOutputCols().length == 0) {
-            return null;
+            // fake schema
+            return new TableSchema(new String[] {"none"}, new TypeInformation[]{BasicTypeInfo.STRING_TYPE_INFO});
         } else {
             return new TableSchema(getTrainOutputCols(),
                     Utils.dataTypesListToTypeInformation(getTrainOutputTypes()));
@@ -75,7 +78,7 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
             configureExampleCoding(config, inputSchema, outputSchema);
             Table outputTable = TFUtils.train(streamEnv, tableEnvironment, inputTable, config, outputSchema);
 //            streamEnv.execute();
-
+//            ((StreamTableEnvironment) tableEnvironment).toAppendStream(outputTable, Row.class).print().setParallelism(1);
             TFModel model = new TFModel()
                     .setZookeeperConnStr(getZookeeperConnStr())
                     .setWorkerNum(getWorkerNum())

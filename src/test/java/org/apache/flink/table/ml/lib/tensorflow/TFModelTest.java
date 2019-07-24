@@ -10,6 +10,7 @@ import org.apache.flink.streaming.api.functions.sink.SocketClientSink;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
+import org.apache.logging.log4j.core.appender.mom.kafka.DefaultKafkaProducerFactory;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +20,8 @@ import java.util.Arrays;
 import java.util.List;
 
 public class TFModelTest {
-    private static final Logger LOG = LoggerFactory.getLogger(TFModelTest.class);
-    private static final String[] scripts = {
+    public static final Logger LOG = LoggerFactory.getLogger(TFModelTest.class);
+    public static final String[] scripts = {
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/run_summarization.py",
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/__init__.py",
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/attention_decoder.py",
@@ -34,30 +35,32 @@ public class TFModelTest {
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/flink_writer.py",
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/train.py",
     };
-    private static final String[] inference_hyperparameter = {
+    public static final String[] inference_hyperparameter = {
             "run_summarization.py", // first param is uesless but required
             "--mode=decode",
             "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test/0*",
             "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
             "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
             "--exp_name=pretrained_model_tf1.2.1",
+            "--batch_size=8", // default to 16
             "--max_enc_steps=400",
             "--max_dec_steps=100",
             "--coverage=1",
             "--single_pass=1",
             "--inference=1",
     };
-    private static final String[] train_hyperparameter = {
+    public static final String[] train_hyperparameter = {
             "run_summarization.py", // first param is uesless but required
             "--mode=train",
-            "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/test_*",
+            "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/train_*",
             "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
             "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
             "--exp_name=pretrained_model_tf1.2.1",
+            "--batch_size=8", // default to 16
             "--max_enc_steps=400",
             "--max_dec_steps=100",
             "--coverage=1",
-            "--num_steps=1",
+            "--num_steps=1", // if 0, never stop
     };
 
     @Test
@@ -66,7 +69,8 @@ public class TFModelTest {
 
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
-        Table fakeInput = tableEnv.fromDataStream(streamEnv.fromCollection(createDummyData()));
+        Table fakeInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
         TFEstimator estimator = createEstimator();
         TFModel model = estimator.fit(tableEnv, fakeInput);
 
@@ -76,7 +80,8 @@ public class TFModelTest {
         tableEnv = StreamTableEnvironment.create(streamEnv);
         // // create a new environment
 
-        Table realInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()), "article");
+        Table realInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
         Table output = model.transform(tableEnv, realInput);
         tableEnv.toAppendStream(output, Row.class).print().setParallelism(1);
         streamEnv.execute();
@@ -88,7 +93,8 @@ public class TFModelTest {
         TestingServer server = new TestingServer(2181, true);
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
-        Table input = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()), "article");
+        Table input = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
 
         TFModel model = createModel();
         Table output = model.transform(tableEnv, input);
@@ -104,7 +110,8 @@ public class TFModelTest {
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.getExecutionEnvironment();
 
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
-        Table input = tableEnv.fromDataStream(streamEnv.fromCollection(createDummyData()));
+        Table input = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
         TFEstimator estimator = createEstimator();
         estimator.fit(tableEnv, input);
         streamEnv.execute();
@@ -136,7 +143,8 @@ public class TFModelTest {
 
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
-        Table fakeInput = tableEnv.fromDataStream(streamEnv.fromCollection(createDummyData()));
+        Table fakeInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
         TFEstimator estimator = createEstimator();
         TFModel model = estimator.fit(tableEnv, fakeInput);
         String modelStr = model.toJson();
@@ -147,7 +155,8 @@ public class TFModelTest {
         tableEnv = StreamTableEnvironment.create(streamEnv);
         // // create a new environment
 
-        Table realInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()), "article");
+        Table realInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
         TFModel loadedModel = new TFModel();
         loadedModel.loadJson(modelStr);
         Table output = loadedModel.transform(tableEnv, realInput);
@@ -164,12 +173,38 @@ public class TFModelTest {
         return data;
     }
 
-    private List<String> createArticleData() {
-        return Arrays.asList("article 1.", "article 2.", "article 3.", "article 4.", "article 5.",
-                "article 6.", "article 7.", "article 8.", "article 9.", "article 10.");
+    private List<Row> createArticleData() {
+        List<Row> rows = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            Row row = new Row(4);
+            row.setField(0, String.format("uuid-%d", i));
+            row.setField(1, String.format("article %d.", i));
+            row.setField(2, "");
+            row.setField(3, String.format("reference %d.", i));
+            rows.add(row);
+        }
+        return rows;
+//        return Arrays.asList("article 1.", "article 2.", "article 3.", "article 4.", "article 5.",
+//                "article 6.", "article 7.", "article 8.", "article 9.", "article 10.");
     }
 
-    private TFEstimator createEstimator() {
+    public static TFModel createModel() {
+        return new TFModel()
+                .setZookeeperConnStr("127.0.0.1:2181")
+                .setWorkerNum(1)
+                .setPsNum(0)
+                .setInferenceScripts(scripts)
+                .setInferenceMapFunc("main_on_flink")
+                .setInferenceHyperParams(inference_hyperparameter)
+                .setInferenceEnvPath(null)
+                .setInferenceSelectedCols(new String[]{ "uuid", "article", "reference" })
+                .setInferenceOutputCols(new String[]{ "uuid", "article", "summary", "reference" })
+//                .setInferenceOutputCols(new String[]{ "abstract", "reference" })
+                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING, DataTypes.STRING, DataTypes.STRING});
+//                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING});
+    }
+
+    public static TFEstimator createEstimator() {
         return new TFEstimator()
                 .setZookeeperConnStr("127.0.0.1:2181")
                 .setWorkerNum(1)
@@ -179,30 +214,16 @@ public class TFModelTest {
                 .setTrainMapFunc("main_on_flink")
                 .setTrainHyperParams(train_hyperparameter)
                 .setTrainEnvPath(null)
-                .setTrainSelectedCols(new String[]{})
-                .setTrainOutputCols(new String[]{})
-                .setTrainOutputTypes(new DataTypes[]{})
+                .setTrainSelectedCols(new String[]{ "uuid", "article", "reference" })
+                .setTrainOutputCols(new String[]{ "uuid"})
+                .setTrainOutputTypes(new DataTypes[]{ DataTypes.STRING })
 
                 .setInferenceScripts(scripts)
                 .setInferenceMapFunc("main_on_flink")
                 .setInferenceHyperParams(inference_hyperparameter)
                 .setInferenceEnvPath(null)
-                .setInferenceSelectedCols(new String[]{ "article" })
-                .setInferenceOutputCols(new String[]{ "abstract", "reference" })
-                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING});
-    }
-
-    private TFModel createModel() {
-        return new TFModel()
-                .setZookeeperConnStr("127.0.0.1:2181")
-                .setWorkerNum(2)
-                .setPsNum(0)
-                .setInferenceScripts(scripts)
-                .setInferenceMapFunc("main_on_flink")
-                .setInferenceHyperParams(inference_hyperparameter)
-                .setInferenceEnvPath(null)
-                .setInferenceSelectedCols(new String[]{ "article" })
-                .setInferenceOutputCols(new String[]{ "abstract", "reference" })
-                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING});
+                .setInferenceSelectedCols(new String[]{ "uuid", "article", "reference" })
+                .setInferenceOutputCols(new String[]{ "uuid", "article", "summary", "reference" })
+                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING, DataTypes.STRING, DataTypes.STRING});
     }
 }

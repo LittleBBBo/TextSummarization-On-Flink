@@ -9,6 +9,52 @@ import numpy as np
 FLAGS = tf.app.flags.FLAGS
 
 
+class FlinkTestTrainer(object):
+    def __init__(self, hps, batcher, sess_config, server_target):
+        self._hps = hps
+        # self._model = model
+        self._batcher = batcher
+
+        train_dir = os.path.join("temp", "test")
+        if not os.path.exists(train_dir):
+            os.makedirs(train_dir)
+        global_step = tf.contrib.framework.get_or_create_global_step()
+
+        # self._model.build_graph()
+        # scaffold = tf.train.Scaffold(saver=tf.train.Saver(max_to_keep=3))
+        # hooks = None
+        # if hps.num_steps > 0:
+        #     hooks = [tf.train.StopAtStepHook(num_steps=hps.num_steps)]
+
+        self._sess = tf.train.MonitoredTrainingSession(master=server_target,
+                                                       is_chief=True,
+                                                       config=sess_config,
+                                                       checkpoint_dir=train_dir,)
+                                                       # save_checkpoint_secs=60,
+                                                       # save_summaries_secs=60)
+                                                       # hooks=hooks,
+                                                       # scaffold=scaffold)
+
+        # self._summary_writer = SummaryWriterCache.get(train_dir)
+        tf.logging.info("Created session.")
+
+    def stop(self):
+        self._sess.close()
+
+    def train(self):
+        tf.logging.info("starting run_training")
+        try:
+            while not self._sess.should_stop():
+                tf.logging.info('getting next batch...')
+                batch = self._batcher.next_batch()
+                tf.logging.info(batch.dec_padding_mask.shape)
+                tf.logging.info(batch.target_batch.shape)
+        except KeyboardInterrupt:
+            tf.logging.info("Caught keyboard interrupt on worker. Stopping supervisor...")
+        finally:
+            self.stop()
+
+
 class FlinkTrainer(object):
     def __init__(self, hps, model, batcher, sess_config, server_target):
         self._hps = hps
@@ -19,6 +65,7 @@ class FlinkTrainer(object):
         if not os.path.exists(train_dir): os.makedirs(train_dir)
 
         self._model.build_graph()
+        # self._batcher.build_graph()
         scaffold = tf.train.Scaffold(saver=tf.train.Saver(max_to_keep=3))
         hooks = None
         if hps.num_steps > 0:
@@ -28,10 +75,11 @@ class FlinkTrainer(object):
                                                        is_chief=True,
                                                        config=sess_config,
                                                        checkpoint_dir=train_dir,
-                                                       save_checkpoint_secs=60,
-                                                       save_summaries_secs=60,
+                                                       # save_checkpoint_secs=60,
+                                                       # save_summaries_secs=60,
                                                        scaffold=scaffold,
                                                        hooks=hooks)
+
         self._summary_writer = SummaryWriterCache.get(train_dir)
         tf.logging.info("Created session.")
 
@@ -42,7 +90,11 @@ class FlinkTrainer(object):
         tf.logging.info("starting run_training")
         try:
             while not self._sess.should_stop():
+                tf.logging.info('getting next batch...')
+                # batch = self._batcher.next_batch()
                 batch = self._batcher.next_batch()
+                tf.logging.info(batch.target_batch.shape)
+                # print batch
                 tf.logging.info('running training step...')
                 t0 = time.time()
                 results = self._model.run_train_step(self._sess, batch)

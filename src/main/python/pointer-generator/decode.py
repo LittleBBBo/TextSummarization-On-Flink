@@ -50,7 +50,7 @@ class BeamSearchDecoder(object):
         self._model = model
         self._model.build_graph()
         self._batcher = batcher
-        self._batcher.build_graph()
+        # self._batcher.build_graph()
         self._writer = writer
         self._writer.build_graph()
         self._counter = 0
@@ -96,6 +96,7 @@ class BeamSearchDecoder(object):
         original_article = batch.original_articles[0]  # string
         original_abstract = batch.original_abstracts[0]  # string
         original_abstract_sents = batch.original_abstracts_sents[0]  # list of strings
+        original_uuid = batch.uuids[0] # string
 
         article_withunks = data.show_art_oovs(original_article, self._vocab)  # string
         abstract_withunks = data.show_abs_oovs(original_abstract, self._vocab,
@@ -119,8 +120,8 @@ class BeamSearchDecoder(object):
 
         if FLAGS.single_pass:
             # write ref summary and decoded summary to file, to eval with pyrouge later
-            self.write_for_rouge(original_abstract_sents, decoded_words,self._counter)
-            self.write_for_flink(original_abstract_sents, decoded_words, self._counter)
+            # self.write_for_rouge(original_abstract_sents, decoded_words,self._counter)
+            self.write_for_flink(original_uuid, original_article, decoded_words, original_abstract_sents)
             self._counter += 1  # this is how many examples we've decoded
         else:
             print_results(article_withunks, abstract_withunks, decoded_output)  # log output to screen
@@ -132,7 +133,7 @@ class BeamSearchDecoder(object):
         t0 = time.time()
         self._counter = 0
         while True:
-            batch = self._batcher.next_batch(self._sess)  # 1 example repeated across batch
+            batch = self._batcher.next_batch()  # 1 example repeated across batch
             if batch is None:  # finished decoding dataset in single_pass mode
                 assert FLAGS.single_pass, "Dataset exhausted, but we are not in single_pass mode"
                 tf.logging.info("Decoder has finished reading dataset for single_pass.")
@@ -155,7 +156,7 @@ class BeamSearchDecoder(object):
                     _ = util.load_ckpt(self._saver, self._sess)
                     t0 = time.time()
 
-    def write_for_flink(self, reference_sents, decoded_words, ex_index=0):
+    def write_for_flink(self, uuid, article, decoded_words, reference_sents):
         """
         Write output to flink table. This is called in single_pass mode.
         :param reference_sents: list of strings
@@ -179,9 +180,9 @@ class BeamSearchDecoder(object):
         reference_sents = [make_html_safe(w) for w in reference_sents]
 
         decoded_result = "  ".join(decoded_sents)
-        reference_result = "  ".join(reference_sents)
-        self._writer.write_result(self._sess, decoded_result, reference_result)
-        tf.logging.info("Wrote example %i to flink" % ex_index)
+        # reference_result = "  ".join(reference_sents)
+        self._writer.write_result(self._sess, uuid, article, decoded_result, ' '.join(reference_sents))
+        tf.logging.info("Wrote example %s to flink" % uuid)
 
     def write_for_rouge(self, reference_sents, decoded_words, ex_index):
         """Write output to file in correct format for eval with pyrouge. This is called in single_pass mode.

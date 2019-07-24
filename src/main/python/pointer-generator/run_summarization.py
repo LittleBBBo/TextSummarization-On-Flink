@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
 
 """This is the top-level file to train, evaluate or test your summarization model"""
-import sys
+# import sys
 import time
 import os
 import traceback
@@ -27,7 +30,7 @@ from collections import namedtuple
 from tensorflow.python.framework.errors_impl import OutOfRangeError
 
 from data import Vocab
-from batcher import Batcher, RawTextBatcher, FlinkBatcher
+from batcher import Batcher, RawTextBatcher, FlinkBatcher, FlinkInferenceBatcher, FlinkTrainBatcher
 from flink_writer import FlinkWriter
 from model import SummarizationModel
 from decode import BeamSearchDecoder
@@ -37,7 +40,7 @@ from flink_ml_tensorflow.tensorflow_context import TFContext
 from tensorflow.python.summary.writer.writer_cache import FileWriterCache as SummaryWriterCache
 from flink_ml_tensorflow import tensorflow_on_flink_ops as tff_ops
 
-from train import FlinkTrainer
+from train import FlinkTrainer, FlinkTestTrainer
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -367,9 +370,11 @@ def main(unused_argv, sess_config=None, server_target=None):
 def training_on_flink(context, sess_config, server_target):
     vocab, hps = default_setup()
     if hps.mode == 'train':
-        batcher = Batcher(FLAGS.data_path, vocab, hps, single_pass=FLAGS.single_pass)
+        # batcher = Batcher(FLAGS.data_path, vocab, hps, FLAGS.single_pass)
+        batcher = FlinkTrainBatcher(context, vocab, hps)
         tf.logging.info("creating model...")
         model = SummarizationModel(hps, vocab)
+        # trainer = FlinkTestTrainer(hps, batcher, sess_config, server_target)
         trainer = FlinkTrainer(hps, model, batcher, sess_config, server_target)
         trainer.train()
     else:
@@ -380,7 +385,7 @@ def inference_on_flink(context, sess_config, server_target):
     vocab, hps = default_setup()
     if hps.inference:
         print "Inference Mode"
-        batcher = FlinkBatcher(context, vocab, hps, single_pass=FLAGS.single_pass)
+        batcher = FlinkInferenceBatcher(context, vocab, hps)
         writer = FlinkWriter(context)
         decode_model_hps = hps  # This will be the hyperparameters for the decoder model
         decode_model_hps = hps._replace(max_dec_steps=1)  # The model is configured with max_dec_steps=1 because we only ever run one step of the decoder at a time (to do beam search). Note that the batcher is initialized with max_dec_steps equal to e.g. 100 because the batches need to contain the full summaries
@@ -413,7 +418,6 @@ def main_on_flink(context):
             tf_hyperparameter = context.properties.get('TF_Hyperparameter')
 
             argv = tf.app.flags.FLAGS(tf_hyperparameter.split(' '), known_only=True)  # Parse known flags.
-            print_log(FLAGS.mode)
             if FLAGS.mode == 'train':
                 training_on_flink(tf_context, sess_config, server.target)
             elif FLAGS.mode == 'decode':

@@ -63,7 +63,6 @@ public class TFModel implements Model<TFModel>, HasClusterConfig<TFModel>, HasIn
             TFConfig config = configureTFConfig();
             configureExampleCoding(config, inputTable.getSchema(), outputSchema);
             Table outputTable = TFUtils.inference(streamEnv, tableEnvironment, inputTable, config, outputSchema);
-//            streamEnv.execute();
             return outputTable;
         } catch (Exception e) {
             throw new RuntimeException(e);

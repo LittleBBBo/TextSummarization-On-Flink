@@ -7,7 +7,7 @@ class AbstractWriter(object):
     def build_graph(self):
         return
 
-    def write_result(self, sess, abstract, reference):
+    def write_result(self, sess, uuid, article, abstract, reference):
         return
 
     def close(self, sess):
@@ -22,10 +22,12 @@ class FlinkWriter(AbstractWriter):
         self._write_feed = tf.placeholder(dtype=tf.string)
         self.write_op, self._close_op = self._context.output_writer_op([self._write_feed])
 
-    def write_result(self, sess, abstract, reference):
+    def write_result(self, sess, uuid, article, abstract, reference):
         example = tf.train.Example(features=tf.train.Features(
             feature={
-                'abstract': tf.train.Feature(bytes_list=tf.train.BytesList(value=[abstract])),
+                'uuid': tf.train.Feature(bytes_list=tf.train.BytesList(value=[uuid])),
+                'article': tf.train.Feature(bytes_list=tf.train.BytesList(value=[article])),
+                'summary': tf.train.Feature(bytes_list=tf.train.BytesList(value=[abstract])),
                 'reference': tf.train.Feature(bytes_list=tf.train.BytesList(value=[reference])),
             }
         ))
