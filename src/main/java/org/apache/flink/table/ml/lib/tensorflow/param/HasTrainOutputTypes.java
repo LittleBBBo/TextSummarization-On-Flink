@@ -5,6 +5,10 @@ import org.apache.flink.ml.api.misc.param.ParamInfo;
 import org.apache.flink.ml.api.misc.param.ParamInfoFactory;
 import org.apache.flink.ml.api.misc.param.WithParams;
 
+/**
+ * An interface for classes with a parameter specifying the types of multiple output columns.
+ * @param <T> the actual type of this WithParams, as the return type of setter
+ */
 public interface HasTrainOutputTypes<T> extends WithParams<T> {
     ParamInfo<DataTypes[]> TRAIN_OUTPUT_TYPES = ParamInfoFactory
             .createParamInfo("trainOutputTypes", DataTypes[].class)

@@ -4,13 +4,19 @@ import org.apache.flink.ml.api.misc.param.ParamInfo;
 import org.apache.flink.ml.api.misc.param.ParamInfoFactory;
 import org.apache.flink.ml.api.misc.param.WithParams;
 
+/**
+ * Parameters for cluster configuration, including:
+ * 1. zookeeper address
+ * 2. worker number
+ * 3. ps number
+ * @param <T> the actual type of this WithParams, as the return type of setter
+ */
 public interface HasClusterConfig<T> extends WithParams<T> {
     ParamInfo<String> ZOOKEEPER_CONNECT_STR = ParamInfoFactory
             .createParamInfo("zookeeper_connect_str", String.class)
             .setDescription("zookeeper address to connect")
             .setRequired()
             .setHasDefaultValue("127.0.0.1:2181").build();
-
     ParamInfo<Integer> WORKER_NUM = ParamInfoFactory
             .createParamInfo("worker_num", Integer.class)
             .setDescription("worker number")

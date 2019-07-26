@@ -4,6 +4,10 @@ import org.apache.flink.ml.api.misc.param.ParamInfo;
 import org.apache.flink.ml.api.misc.param.ParamInfoFactory;
 import org.apache.flink.ml.api.misc.param.WithParams;
 
+/**
+ * An interface for classes with a parameter specifying the name of multiple selected input columns.
+ * @param <T> the actual type of this WithParams, as the return type of setter
+ */
 public interface HasInferenceSelectedCols<T> extends WithParams<T> {
     ParamInfo<String[]> INFERENCE_SELECTED_COLS = ParamInfoFactory
             .createParamInfo("inferenceSelectedCols", String[].class)

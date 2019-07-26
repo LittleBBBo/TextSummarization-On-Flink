@@ -4,6 +4,15 @@ import org.apache.flink.ml.api.misc.param.ParamInfo;
 import org.apache.flink.ml.api.misc.param.ParamInfoFactory;
 import org.apache.flink.ml.api.misc.param.WithParams;
 
+/**
+ * Parameters for python configuration in training process, including:
+ * 1. paths of python scripts
+ * 2. entry function in main python file
+ * 3. key to get hyper parameter in python
+ * 4. hyper parameter for python
+ * 5. virtual environment path
+ * @param <T> the actual type of this WithParams, as the return type of setter
+ */
 public interface HasTrainPythonConfig<T> extends WithParams<T> {
     ParamInfo<String[]> TRAIN_SCRIPTS = ParamInfoFactory
             .createParamInfo("train_scripts", String[].class)
@@ -13,6 +22,11 @@ public interface HasTrainPythonConfig<T> extends WithParams<T> {
             .createParamInfo("train_map_func", String.class)
             .setDescription("the entry function in entry file to be called, for train processing")
             .setRequired().build();
+    ParamInfo<String> TRAIN_HYPER_PARAMS_KEY = ParamInfoFactory
+            .createParamInfo("train_hyper_params_key", String.class)
+            .setDescription("the key name to get hyper params from context inf TensorFlow, for train processing")
+            .setRequired()
+            .build();
     ParamInfo<String[]> TRAIN_HYPER_PARAMS = ParamInfoFactory
             .createParamInfo("train_hyper_params", String[].class)
             .setDescription("hyper params for TensorFlow, each param format is '--param1=value1', for train processing")
@@ -38,6 +52,14 @@ public interface HasTrainPythonConfig<T> extends WithParams<T> {
 
     default T setTrainMapFunc(String mapFunc) {
         return set(TRAIN_MAP_FUNC, mapFunc);
+    }
+
+    default String getTrainHyperParamsKey() {
+        return get(TRAIN_HYPER_PARAMS_KEY);
+    }
+
+    default T setTrainHyperParamsKey(String key) {
+        return set(TRAIN_HYPER_PARAMS_KEY, key);
     }
 
     default String[] getTrainHyperParams() {

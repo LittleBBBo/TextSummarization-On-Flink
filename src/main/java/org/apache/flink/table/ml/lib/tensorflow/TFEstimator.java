@@ -21,11 +21,14 @@ import org.apache.flink.types.Row;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * A general TensorFlow estimator implemented by Flink-AI-Extended,
+ * responsible for training and generating TensorFlow models.
+ */
 public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterConfig<TFEstimator>,
         HasTrainPythonConfig<TFEstimator>, HasInferencePythonConfig<TFEstimator>,
         HasTrainSelectedCols<TFEstimator>, HasTrainOutputCols<TFEstimator>, HasTrainOutputTypes<TFEstimator>,
         HasInferenceSelectedCols<TFEstimator>, HasInferenceOutputCols<TFEstimator>, HasInferenceOutputTypes<TFEstimator> {
-    private static final String CONFIG_HYPERPARAMETER = "TF_Hyperparameter";
     private Params params = new Params();
 
     protected Table configureInputTable(Table rawTable) {
@@ -37,8 +40,7 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
     }
     protected TableSchema configureOutputSchema() {
         if (getTrainOutputCols().length == 0) {
-            // fake schema
-            return new TableSchema(new String[] {"none"}, new TypeInformation[]{BasicTypeInfo.STRING_TYPE_INFO});
+            return null;
         } else {
             return new TableSchema(getTrainOutputCols(),
                     Utils.dataTypesListToTypeInformation(getTrainOutputTypes()));
@@ -49,7 +51,7 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
         Map<String, String> prop = new HashMap<>();
         prop.put(MLConstants.CONFIG_STORAGE_TYPE, MLConstants.STORAGE_ZOOKEEPER);
         prop.put(MLConstants.CONFIG_ZOOKEEPER_CONNECT_STR, getZookeeperConnStr());
-        prop.put(CONFIG_HYPERPARAMETER, String.join(" ", getTrainHyperParams()));
+        prop.put(getTrainHyperParamsKey(), String.join(" ", getTrainHyperParams()));
         return new TFConfig(getWorkerNum(), getPsNum(), prop, getTrainScripts(), getTrainMapFunc(), getTrainEnvPath());
     }
 

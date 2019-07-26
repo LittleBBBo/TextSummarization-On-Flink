@@ -17,6 +17,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+/**
+ * An end-to-end document summarization application.
+ * In training mode, the TFEstimator uses data from kafka source to train
+ * a TensorFlor model implemented by Flink-AI-Extended and return a TFModel.
+ *
+ * In reference mode, the TFModel process the summarization request from
+ * kafka source and write the result to a kafka sink.
+ */
 public class App {
     public static final int MAX_ROW_COUNT = 8;
 
@@ -41,6 +49,7 @@ public class App {
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/flink_writer.py",
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/train.py",
     };
+    private static final String hyperparameter_key = "TF_Hyperparameter";
     public static final String[] inference_hyperparameter = {
             "run_summarization.py", // first param is uesless but required
             "--mode=decode",
@@ -66,7 +75,7 @@ public class App {
             "--max_enc_steps=400",
             "--max_dec_steps=100",
             "--coverage=1",
-            "--num_steps=2", // if 0, never stop
+            "--num_steps=1", // if 0, never stop
     };
 
     public static String startTraining() throws Exception {
@@ -114,7 +123,6 @@ public class App {
             model.loadJson(modelJson);
         }
         Table output = model.transform(tableEnv, input);
-
         tableEnv.toAppendStream(output, Row.class).print().setParallelism(1);
         tableEnv.toAppendStream(output, Row.class).addSink(kafkaProducer).setParallelism(1);
         streamEnv.execute();
@@ -136,15 +144,16 @@ public class App {
                 .setZookeeperConnStr("127.0.0.1:2181")
                 .setWorkerNum(1)
                 .setPsNum(0)
+
                 .setInferenceScripts(scripts)
                 .setInferenceMapFunc("main_on_flink")
+                .setInferenceHyperParamsKey(hyperparameter_key)
                 .setInferenceHyperParams(inference_hyperparameter)
                 .setInferenceEnvPath(null)
+
                 .setInferenceSelectedCols(new String[]{ "uuid", "article", "reference" })
                 .setInferenceOutputCols(new String[]{ "uuid", "article", "summary", "reference" })
-//                .setInferenceOutputCols(new String[]{ "abstract", "reference" })
                 .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING, DataTypes.STRING, DataTypes.STRING});
-//                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING});
     }
 
     public static TFEstimator createEstimator() {
@@ -155,16 +164,20 @@ public class App {
 
                 .setTrainScripts(scripts)
                 .setTrainMapFunc("main_on_flink")
+                .setTrainHyperParamsKey(hyperparameter_key)
                 .setTrainHyperParams(train_hyperparameter)
                 .setTrainEnvPath(null)
+
                 .setTrainSelectedCols(new String[]{ "uuid", "article", "reference" })
                 .setTrainOutputCols(new String[]{ "uuid"})
                 .setTrainOutputTypes(new DataTypes[]{ DataTypes.STRING })
 
                 .setInferenceScripts(scripts)
                 .setInferenceMapFunc("main_on_flink")
+                .setInferenceHyperParamsKey(hyperparameter_key)
                 .setInferenceHyperParams(inference_hyperparameter)
                 .setInferenceEnvPath(null)
+
                 .setInferenceSelectedCols(new String[]{ "uuid", "article", "reference" })
                 .setInferenceOutputCols(new String[]{ "uuid", "article", "summary", "reference" })
                 .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING, DataTypes.STRING, DataTypes.STRING});

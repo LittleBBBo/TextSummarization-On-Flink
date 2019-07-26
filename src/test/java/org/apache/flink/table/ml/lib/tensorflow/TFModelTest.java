@@ -2,21 +2,22 @@ package org.apache.flink.table.ml.lib.tensorflow;
 
 import com.alibaba.flink.ml.operator.util.DataTypes;
 import org.apache.curator.test.TestingServer;
-import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.ml.api.core.Pipeline;
+import org.apache.flink.ml.api.core.Transformer;
+import org.apache.flink.ml.api.misc.param.Params;
+import org.apache.flink.ml.params.shared.colname.HasSelectedCols;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.SocketClientSink;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
+import org.apache.flink.table.ml.lib.tensorflow.param.HasTrainSelectedCols;
 import org.apache.flink.types.Row;
-import org.apache.logging.log4j.core.appender.mom.kafka.DefaultKafkaProducerFactory;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class TFModelTest {
@@ -35,6 +36,7 @@ public class TFModelTest {
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/flink_writer.py",
             "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/train.py",
     };
+    private static final String hyperparameter_key = "TF_Hyperparameter";
     public static final String[] inference_hyperparameter = {
             "run_summarization.py", // first param is uesless but required
             "--mode=decode",
@@ -42,7 +44,7 @@ public class TFModelTest {
             "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
             "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
             "--exp_name=pretrained_model_tf1.2.1",
-            "--batch_size=8", // default to 16
+            "--batch_size=4", // default to 16
             "--max_enc_steps=400",
             "--max_dec_steps=100",
             "--coverage=1",
@@ -56,7 +58,7 @@ public class TFModelTest {
             "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
             "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
             "--exp_name=pretrained_model_tf1.2.1",
-            "--batch_size=8", // default to 16
+            "--batch_size=4", // default to 16
             "--max_enc_steps=400",
             "--max_dec_steps=100",
             "--coverage=1",
@@ -165,12 +167,38 @@ public class TFModelTest {
         server.stop();
     }
 
-    private List<Row> createDummyData() {
-        List<Row> data = new ArrayList<>();
-        Row r = new Row(1);
-        r.setField(0, 1);
-        data.add(r);
-        return data;
+    @Test
+    public void testPipeline() throws Exception {
+        TestingServer server = new TestingServer(2181, true);
+
+        // training
+        StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
+        StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
+        Table trainInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
+        Pipeline unfitPipeline = new Pipeline();
+        unfitPipeline.appendStage(createTransformer())
+                .appendStage(createEstimator());
+
+//        LOG.info("unfitted pipeline json: " + unfitPipeline.toJson());
+        Pipeline fitPipeline = unfitPipeline.fit(tableEnv, trainInput);
+//        String fitPipelineJson = fitPipeline.toJson();
+//        LOG.info("fitted pipeline json: " + fitPipelineJson);
+        streamEnv.execute();
+
+        // inference
+        streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
+        tableEnv = StreamTableEnvironment.create(streamEnv);
+        Table realInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+                "uuid,article,summary,reference");
+//        Pipeline restoredPipeline = new Pipeline();
+//        restoredPipeline.loadJson(fitPipelineJson);
+//        Table output = restoredPipeline.transform(tableEnv, realInput);
+        Table output = fitPipeline.transform(tableEnv, realInput);
+        tableEnv.toAppendStream(output, Row.class).print().setParallelism(1);
+        streamEnv.execute();
+
+        server.stop();
     }
 
     private List<Row> createArticleData() {
@@ -193,15 +221,16 @@ public class TFModelTest {
                 .setZookeeperConnStr("127.0.0.1:2181")
                 .setWorkerNum(1)
                 .setPsNum(0)
+
                 .setInferenceScripts(scripts)
                 .setInferenceMapFunc("main_on_flink")
+                .setInferenceHyperParamsKey(hyperparameter_key)
                 .setInferenceHyperParams(inference_hyperparameter)
                 .setInferenceEnvPath(null)
+
                 .setInferenceSelectedCols(new String[]{ "uuid", "article", "reference" })
                 .setInferenceOutputCols(new String[]{ "uuid", "article", "summary", "reference" })
-//                .setInferenceOutputCols(new String[]{ "abstract", "reference" })
                 .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING, DataTypes.STRING, DataTypes.STRING});
-//                .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING});
     }
 
     public static TFEstimator createEstimator() {
@@ -212,18 +241,41 @@ public class TFModelTest {
 
                 .setTrainScripts(scripts)
                 .setTrainMapFunc("main_on_flink")
+                .setTrainHyperParamsKey(hyperparameter_key)
                 .setTrainHyperParams(train_hyperparameter)
                 .setTrainEnvPath(null)
+
                 .setTrainSelectedCols(new String[]{ "uuid", "article", "reference" })
                 .setTrainOutputCols(new String[]{ "uuid"})
                 .setTrainOutputTypes(new DataTypes[]{ DataTypes.STRING })
 
                 .setInferenceScripts(scripts)
                 .setInferenceMapFunc("main_on_flink")
+                .setInferenceHyperParamsKey(hyperparameter_key)
                 .setInferenceHyperParams(inference_hyperparameter)
                 .setInferenceEnvPath(null)
+
                 .setInferenceSelectedCols(new String[]{ "uuid", "article", "reference" })
                 .setInferenceOutputCols(new String[]{ "uuid", "article", "summary", "reference" })
                 .setInferenceOutputTypes(new DataTypes[] {DataTypes.STRING, DataTypes.STRING, DataTypes.STRING, DataTypes.STRING});
     }
+
+    public static Transformer createTransformer() {
+        return new SelectColTransformer()
+                .setTrainSelectedCols(new String[]{ "uuid", "article", "reference" });
+    }
+
+    public static class SelectColTransformer implements Transformer<SelectColTransformer>, HasTrainSelectedCols<SelectColTransformer> {
+        private final Params params = new Params();
+        @Override
+        public Table transform(TableEnvironment tEnv, Table input) {
+            return input.select(String.join(",", getTrainSelectedCols()));
+        }
+
+        @Override
+        public Params getParams() {
+            return params;
+        }
+    }
+
 }
