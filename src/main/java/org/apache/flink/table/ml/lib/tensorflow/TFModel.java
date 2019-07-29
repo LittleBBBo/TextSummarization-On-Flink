@@ -56,16 +56,23 @@ public class TFModel implements Model<TFModel>, HasClusterConfig<TFModel>, HasIn
     public Table transform(TableEnvironment tableEnvironment, Table table) {
         StreamExecutionEnvironment streamEnv;
         try {
+            // TODO: [hack] transform table to dataStream to get StreamExecutionEnvironment
             if (tableEnvironment instanceof StreamTableEnvironment) {
                 StreamTableEnvironment streamTableEnvironment = (StreamTableEnvironment)tableEnvironment;
                 streamEnv = streamTableEnvironment.toAppendStream(table, Row.class).getExecutionEnvironment();
             } else {
                 throw new RuntimeException("Unsupported TableEnvironment, please use StreamTableEnvironment");
             }
+
+            // Select the necessary columns according to "SelectedCols"
             Table inputTable = configureInputTable(table);
+            // Construct the output schema according on the "OutputCols" and "OutputTypes"
             TableSchema outputSchema = configureOutputSchema();
+            // Create a basic TFConfig according to "ClusterConfig" and "PythonConfig"
             TFConfig config = configureTFConfig();
+            // Configure the row encoding and decoding base on input & output schema
             configureExampleCoding(config, inputTable.getSchema(), outputSchema);
+            // transform the table by TF which implemented by AI-Extended
             Table outputTable = TFUtils.inference(streamEnv, tableEnvironment, inputTable, config, outputSchema);
             return outputTable;
         } catch (Exception e) {

@@ -61,26 +61,30 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
 
     @Override
     public TFModel fit(TableEnvironment tableEnvironment, Table table) {
-
         StreamExecutionEnvironment streamEnv;
         try {
+            // TODO: [hack] transform table to dataStream to get StreamExecutionEnvironment
             if (tableEnvironment instanceof StreamTableEnvironment) {
                 StreamTableEnvironment streamTableEnvironment = (StreamTableEnvironment)tableEnvironment;
                 streamEnv = streamTableEnvironment.toAppendStream(table, Row.class).getExecutionEnvironment();
             } else {
                 throw new RuntimeException("Unsupported TableEnvironment, please use StreamTableEnvironment");
             }
+            // Select the necessary columns according to "SelectedCols"
             Table inputTable = configureInputTable(table);
             TableSchema inputSchema = null;
             if (inputTable != null) {
                 inputSchema = inputTable.getSchema();
             }
+            // Construct the output schema according on the "OutputCols" and "OutputTypes"
             TableSchema outputSchema = configureOutputSchema();
+            // Create a basic TFConfig according to "ClusterConfig" and "PythonConfig"
             TFConfig config = configureTFConfig();
+            // Configure the row encoding and decoding base on input & output schema
             configureExampleCoding(config, inputSchema, outputSchema);
+            // transform the table by TF which implemented by AI-Extended
             Table outputTable = TFUtils.train(streamEnv, tableEnvironment, inputTable, config, outputSchema);
-//            streamEnv.execute();
-//            ((StreamTableEnvironment) tableEnvironment).toAppendStream(outputTable, Row.class).print().setParallelism(1);
+            // Construct the trained model by inference related config
             TFModel model = new TFModel()
                     .setZookeeperConnStr(getZookeeperConnStr())
                     .setWorkerNum(getWorkerNum())

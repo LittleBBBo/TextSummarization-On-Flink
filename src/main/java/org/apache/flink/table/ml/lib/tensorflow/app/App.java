@@ -1,6 +1,7 @@
 package org.apache.flink.table.ml.lib.tensorflow.app;
 
 import com.alibaba.flink.ml.operator.util.DataTypes;
+import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
@@ -79,9 +80,10 @@ public class App {
     };
 
     public static String startTraining() throws Exception {
+        ExecutionEnvironment executionEnvironment = ExecutionEnvironment.createLocalEnvironment();
+
         StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
-
         FlinkKafkaConsumer<Row> kafkaConsumer = createMessageConsumer(trainTopic, kafkaAddress, consumerGroup);
         kafkaConsumer.setStartFromEarliest();
 
