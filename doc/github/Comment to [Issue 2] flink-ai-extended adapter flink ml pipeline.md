@@ -1,0 +1,231 @@
+## Comment to [[Issue 2](https://github.com/alibaba/flink-ai-extended/issues/2)] flink-ai-extended adapter flink ml pipeline
+
+I implemented two general classes——**TFEstimator** and **TFModel** based on the Flink ML pipeline framework(see [flink-ml-parent](https://github.com/apache/flink/tree/release-1.9/flink-ml-parent)). These two classes encapsulate the Flink-AI-Extended **train** and **inference** procedures in the **fit**() and **transform**() methods respectively. The WithParams interface implements the configuration and delivery of common parameters.
+
+**TFEstimator** and **TFModel** are specific implementation classes. In theory, **any** Flink-AI-Extended extension-based TensorFlow algorithm can be run. The train/inference process is completely encapsulated by some generalized parameter configuration, so that the user can simply construct an estimator or model of a TensorFlow algorithm.
+
+### Params
+
+In general, the following types of parameters need to be configured when using Flink-AI-Extended:
+
+- **cluster information**: including zookeeper address, number of workers, number of ps.
+- **Input and output information**: including the column name of the input table that needs to be passed to the TensorFlow, and the column name and corresponding type of the output table that TensorFlow returns to flink.
+- **python  information**: including all python file paths, main function entry, hyper parameters passed to python, virtual environment path.
+
+Therefore, some unified interfaces are designed for each type of parameter, and **TFEstimator** and **TFModel** implement these interfaces. It should be noted that for the input and output and python related parameters, **two sets** of the same interface are designed for the **training** and **Inference** processes respectively. This design is because although most parameters of TFEstimator and TFModel should be the same in general applications, it is impossible to force users to develop TensorFlow algorithm according to such specifications, so the ability to independently configure a set of parameters for TFEstimator and TFModel is retained. . For example, the user's entry function during training is "train_on_flink" and the reference process can be "inference_on_flink".
+
+The core design of parameter interfaces is as follows:
+
+```java
+package org.apache.flink.table.ml.lib.tensorflow.param;
+
+import org.apache.flink.ml.api.misc.param.ParamInfo;
+import org.apache.flink.ml.api.misc.param.ParamInfoFactory;
+import org.apache.flink.ml.api.misc.param.WithParams;
+
+/**
+ * Parameters for cluster configuration, including:
+ * 1. zookeeper address
+ * 2. worker number
+ * 3. ps number
+ */
+public interface HasClusterConfig<T> extends WithParams<T> {
+    ParamInfo<String> ZOOKEEPER_CONNECT_STR;
+    ParamInfo<Integer> WORKER_NUM;
+    ParamInfo<Integer> PS_NUM;
+}
+
+
+/**
+ * Parameters for python configuration in training process, including:
+ * 1. paths of python scripts
+ * 2. entry function in main python file
+ * 3. key to get hyper parameter in python
+ * 4. hyper parameter for python
+ * 5. virtual environment path
+ */
+public interface HasTrainPythonConfig<T> extends WithParams<T> {
+    ParamInfo<String[]> TRAIN_SCRIPTS;
+    ParamInfo<String> TRAIN_MAP_FUNC;
+  	ParamInfo<String> TRAIN_HYPER_PARAMS_KEY;
+    ParamInfo<String[]> TRAIN_HYPER_PARAMS;
+    ParamInfo<String> TRAIN_ENV_PATH;
+}
+
+
+/**
+ * An interface for classes with a parameter specifying 
+ * the name of multiple selected input columns.
+ */
+public interface HasTrainSelectedCols<T> extends WithParams<T> {
+    ParamInfo<String[]> TRAIN_SELECTED_COLS;
+}
+
+
+/**
+ * An interface for classes with a parameter specifying 
+ * the names of multiple output columns.
+ */
+public interface HasTrainOutputCols<T> extends WithParams<T> {
+    ParamInfo<String[]> TRAIN_OUTPUT_COLS;
+}
+
+
+/**
+ * An interface for classes with a parameter specifying
+ * the types of multiple output columns.
+ */
+public interface HasTrainOutputTypes<T> extends WithParams<T> {
+    ParamInfo<DataTypes[]> TRAIN_OUTPUT_TYPES;
+}
+
+
+/**
+ * Mirrored interfaces for configuration in inference process
+ */
+public interface HasInferencePythonConfig<T> extends WithParams<T>;
+public interface HasInferenceSelectedCols<T> extends WithParams<T>;
+public interface HasInferenceOutputCols<T> extends WithParams<T>;
+public interface HasInferenceOutputTypes<T> extends WithParams<T>;
+```
+
+
+
+###TFModel 
+
+The general **TFModel** configures cluster information and Python related information (such as file path, super parameter, etc.) through the **HasClusterConfig** and **HasInferencePythonConfig** interfaces. The encoding and decoding formats related to data transmission by the TF are configured through the **HasInferenceSelectedCols**, **HasInferenceOutputCols**, and **HasInferenceOutputTypes** interfaces.
+
+The core design of **TFModel** is as follows:
+
+```java
+/**
+ * A general TensorFlow model implemented by Flink-AI-Extended,
+ * is usually generated by an {@link TFEstimator}
+ * when {@link TFEstimator#fit(TableEnvironment, Table)} is invoked.
+ */
+public class TFModel implements Model<TFModel>, 
+		HasClusterConfig<TFModel>, 
+		HasInferencePythonConfig<TFModel>, 
+		HasInferenceSelectedCols<TFModel>, 
+		HasInferenceOutputCols<TFModel>, 
+		HasInferenceOutputTypes<TFModel> {
+      
+    private static final Logger LOG = LoggerFactory.getLogger(TFModel.class);
+    private Params params = new Params();
+
+    @Override
+    public Table transform(TableEnvironment tableEnvironment, Table table) {
+        StreamExecutionEnvironment streamEnv;
+        try {
+          	// TODO: [hack] transform table to dataStream to get StreamExecutionEnvironment
+            if (tableEnvironment instanceof StreamTableEnvironment) {
+                StreamTableEnvironment streamTableEnvironment = 
+                  	(StreamTableEnvironment)tableEnvironment;
+                streamEnv = streamTableEnvironment
+                  	.toAppendStream(table, Row.class).getExecutionEnvironment();
+            } else {
+                throw new RuntimeException("Unsupported TableEnvironment, please use StreamTableEnvironment");
+            }
+          	
+          	// Select the necessary columns according to "SelectedCols"
+            Table inputTable = configureInputTable(table);
+          	// Construct the output schema according on the "OutputCols" and "OutputTypes"
+            TableSchema outputSchema = configureOutputSchema();
+          	// Create a basic TFConfig according to "ClusterConfig" and "PythonConfig"
+            TFConfig config = configureTFConfig();
+          	// Configure the row encoding and decoding base on input & output schema
+            configureExampleCoding(config, inputTable.getSchema(), outputSchema);
+          	// transform the table by TF which implemented by AI-Extended
+            Table outputTable = TFUtils
+              	.inference(streamEnv, tableEnvironment, inputTable, config, outputSchema);
+            return outputTable;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Params getParams() {
+        return params;
+    }
+}
+```
+
+
+
+### TFEstimator
+
+The general **TFEstimator** parameter configuration process is similar to **TFModel**, but the parameters of the train process and the Inference process need to be configured at the same time. Because the **TFEstimator** needs to return an **instantiated TFModel**, most of the parameters should be the same, but the user should not be required to do that. So the ability to independently configure a set of parameters for TFEstimator and TFModel is retained.
+
+The core design of **TFEstimator** is as follows:
+
+```java
+/**
+ * A general TensorFlow estimator implemented by Flink-AI-Extended,
+ * responsible for training and generating TensorFlow models.
+ */
+public class TFEstimator implements Estimator<TFEstimator, TFModel>, 
+		HasClusterConfig<TFEstimator>,
+
+		HasTrainPythonConfig<TFEstimator>, 
+		HasInferencePythonConfig<TFEstimator>,
+
+		HasTrainSelectedCols<TFEstimator>, 
+		HasTrainOutputCols<TFEstimator>, 
+		HasTrainOutputTypes<TFEstimator>,
+
+		HasInferenceSelectedCols<TFEstimator>, 
+		HasInferenceOutputCols<TFEstimator>, 
+		HasInferenceOutputTypes<TFEstimator> {
+      
+    private Params params = new Params();
+
+    @Override
+    public TFModel fit(TableEnvironment tableEnvironment, Table table) {
+        StreamExecutionEnvironment streamEnv;
+        try {
+          	// TODO: [hack] transform table to dataStream to get StreamExecutionEnvironment
+            if (tableEnvironment instanceof StreamTableEnvironment) {
+                StreamTableEnvironment streamTableEnvironment = 
+                  	(StreamTableEnvironment)tableEnvironment;
+                streamEnv = streamTableEnvironment
+                  	.toAppendStream(table, Row.class).getExecutionEnvironment();
+            } else {
+                throw new RuntimeException("Unsupported TableEnvironment, please use StreamTableEnvironment");
+            }
+          	// Select the necessary columns according to "SelectedCols"
+            Table inputTable = configureInputTable(table);
+          	// Construct the output schema according on the "OutputCols" and "OutputTypes"
+            TableSchema outputSchema = configureOutputSchema();
+          	// Create a basic TFConfig according to "ClusterConfig" and "PythonConfig"
+            TFConfig config = configureTFConfig();
+          	// Configure the row encoding and decoding base on input & output schema
+            configureExampleCoding(config, inputTable.getSchema(), outputSchema);
+          	// transform the table by TF which implemented by AI-Extended
+            Table outputTable = TFUtils.train(streamEnv, tableEnvironment, inputTable, config, outputSchema);
+						// Construct the trained model by inference related config
+            TFModel model = new TFModel()
+                    .setZookeeperConnStr(getZookeeperConnStr())
+                    .setWorkerNum(getWorkerNum())
+                    .setPsNum(getPsNum())
+                    .setInferenceScripts(getInferenceScripts())
+                    .setInferenceMapFunc(getInferenceMapFunc())
+                    .setInferenceHyperParams(getInferenceHyperParams())
+                    .setInferenceEnvPath(getInferenceEnvPath())
+                    .setInferenceSelectedCols(getInferenceSelectedCols())
+                    .setInferenceOutputCols(getInferenceOutputCols())
+                    .setInferenceOutputTypes(getInferenceOutputTypes());
+            return model;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Params getParams() {
+        return params;
+    }
+}
+```
+
+Please let me know If you think there is any problem with these designs. If not, I'd like to create a **pull request** with detailed code, documentation and testing. By the way, Flink ML pipeline is on top of Flink-1.9 and I think you may split a branch for Flink-1.9 because there are some incompatibilities between 1.8 and 1.9.

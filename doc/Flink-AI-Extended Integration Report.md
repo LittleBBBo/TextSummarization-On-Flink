@@ -249,7 +249,7 @@ List：
 
 \[Issue-8][Flink ML Pipeline] **How to restart a estimator from a pre-trained model?**
 
-\[Issue-9][Flink ML Pipeline] **How to use StreamEnvironment for stream machine learning?**
+\[Issue-9][Flink ML Pipeline] **How to use pipeline for stream machine learning?**
 
 
 
@@ -355,7 +355,7 @@ streamEnv.execute();
 
 #### \[Issue-7][Flink-AI-Extended]\[Bug] Exception when there is only InputTfExampleConfig but no OutputTfExampleConfig.
 
-如下，在配置ExampleCoding（即配置Flink与Python进行数据传输的格式）时，如果只配置encode部分而不配置decode部分会无法执行。具体需之后写测试用例再次验证一下。
+如下，这是正常配置ExampleCoding（即配置Flink与Python进行数据传输的格式），但如果只配置encode部分而不配置decode部分会无法执行，抛出异常。反之亦然。
 
 ```java
 // configure encode example coding
@@ -371,6 +371,155 @@ String strOutput = ExampleCodingConfig.createExampleConfigStr(decodeNames, decod
 config.getProperties().put(TFConstants.OUTPUT_TF_EXAMPLE_CONFIG, strOutput);
 config.getProperties().put(MLConstants.DECODING_CLASS, 
                            ExampleCoding.class.getCanonicalName());
+```
+
+这样的使用场景是比较常见的，比如在训练过程中，用户只需要往TF传输数据，而无需其返回table，因此只会有flink-to-tf的encode阶段，而没有tf-to-flink的decode阶段。对用户来说，只设置encode相关的配置也是符合一般习惯的。
+
+因此，我希望能只配置encode部分而不配置decode部分，相反的情况也同样如此。
+
+经查阅，主要原因在与CodingFactory.java中的ReflectUtil.createInstance(className, classes, objects)方法。该方法会根据ENCODING_CLASS去创建一个ExampleCoding实例，而根据ExampleCoding.java的定义，在构造函数中会同时配置inputConfig和outputConfig（即便没有），这就会导致NullPointerException。
+
+以下是异常信息：
+
+```java
+java.lang.reflect.InvocationTargetException
+	at sun.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+	at sun.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:62)
+	at sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+	at java.lang.reflect.Constructor.newInstance(Constructor.java:423)
+	at com.alibaba.flink.ml.util.ReflectUtil.createInstance(ReflectUtil.java:36)
+	at com.alibaba.flink.ml.coding.CodingFactory.getEncoding(CodingFactory.java:49)
+	at com.alibaba.flink.ml.data.DataExchange.<init>(DataExchange.java:58)
+	at com.alibaba.flink.ml.operator.ops.MLMapFunction.open(MLMapFunction.java:80)
+	at com.alibaba.flink.ml.operator.ops.MLFlatMapOp.open(MLFlatMapOp.java:51)
+	at org.apache.flink.api.common.functions.util.FunctionUtils.openFunction(FunctionUtils.java:36)
+	at org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator.open(AbstractUdfStreamOperator.java:102)
+	at org.apache.flink.streaming.api.operators.StreamFlatMap.open(StreamFlatMap.java:43)
+	at org.apache.flink.streaming.runtime.tasks.StreamTask.openAllOperators(StreamTask.java:424)
+	at org.apache.flink.streaming.runtime.tasks.StreamTask.invoke(StreamTask.java:290)
+	at org.apache.flink.runtime.taskmanager.Task.run(Task.java:711)
+	at java.lang.Thread.run(Thread.java:748)
+Caused by: java.lang.NullPointerException
+	at com.alibaba.flink.ml.tensorflow.coding.ExampleCodingConfig.fromJsonObject(ExampleCodingConfig.java:100)
+	at com.alibaba.flink.ml.tensorflow.coding.ExampleCoding.<init>(ExampleCoding.java:57)
+	... 16 more
+```
+
+以下是详细测试用例，Java代码：
+
+```java
+private static final String ZookeeperConn = "127.0.0.1:2181";
+private static final String[] Scripts = {"test.py"};
+private static final int WorkerNum = 1;
+private static final int PsNum = 0;
+
+@Test
+public void testExampleCodingWithoutDecode() throws Exception {
+		TestingServer server = new TestingServer(2181, true);
+		StreamExecutionEnvironment streamEnv = 
+      	StreamExecutionEnvironment.createLocalEnvironment(1);
+		streamEnv.setRestartStrategy(RestartStrategies.noRestart());
+		StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
+  
+		Table input = tableEnv
+				.fromDataStream(streamEnv.fromCollection(createDummyData()), "input");
+		TableSchema inputSchema = 
+				new TableSchema(new String[]{"input"}, 
+                    		new TypeInformation[]{BasicTypeInfo.STRING_TYPE_INFO});
+		TableSchema outputSchema = null;
+  
+  	TFConfig config = createTFConfig("test_example_coding_without_decode");
+  	// configure encode coding
+  	String strInput = ExampleCodingConfig.createExampleConfigStr(
+      	new String[]{"input"}, new DataTypes[]{DataTypes.STRING}, 
+      	ExampleCodingConfig.ObjectType.ROW, Row.class);
+  	config.getProperties().put(TFConstants.INPUT_TF_EXAMPLE_CONFIG, strInput);
+		config.getProperties().put(MLConstants.ENCODING_CLASS, 
+                               ExampleCoding.class.getCanonicalName());
+  
+  	// run in python
+		Table output = TFUtils.inference(streamEnv, tableEnv, input, config, outputSchema);
+
+		streamEnv.execute();
+		server.stop();
+}
+
+private List<Row> createDummyData() {
+		List<Row> rows = new ArrayList<>();
+		for (int i = 0; i < 10; i++) {
+				Row row = new Row(1);
+				row.setField(0, String.format("data-%d", i));
+        rows.add(row);
+		}
+		return rows;
+}
+
+private TFConfig createTFConfig(String mapFunc) {
+		Map<String, String> prop = new HashMap<>();
+		prop.put(MLConstants.CONFIG_STORAGE_TYPE, MLConstants.STORAGE_ZOOKEEPER);
+		prop.put(MLConstants.CONFIG_ZOOKEEPER_CONNECT_STR, ZookeeperConn);
+		return new TFConfig(WorkerNum, PsNum, prop, Scripts, mapFunc, null);
+}
+```
+
+Python代码：
+
+```python
+import tensorflow as tf
+from flink_ml_tensorflow.tensorflow_context import TFContext
+
+
+class FlinkReader(object):
+    def __init__(self, context, batch_size=1, features={'input': tf.FixedLenFeature([], tf.string)}):
+        self._context = context
+        self._batch_size = batch_size
+        self._features = features
+        self._build_graph()
+
+    def _decode(self, features):
+        return features['input']
+
+    def _build_graph(self):
+        dataset = self._context.flink_stream_dataset()
+        dataset = dataset.map(lambda record: tf.parse_single_example(record, features=self._features))
+        dataset = dataset.map(self._decode)
+        dataset = dataset.batch(self._batch_size)
+        iterator = dataset.make_one_shot_iterator()
+        self._next_batch = iterator.get_next()
+
+    def next_batch(self, sess):
+        try:
+            batch = sess.run(self._next_batch)
+            return batch
+        except tf.errors.OutOfRangeError:
+            return None
+
+
+def test_example_coding_without_decode(context):
+    tf_context = TFContext(context)
+    if 'ps' == tf_context.get_role_name():
+        from time import sleep
+        while True:
+            sleep(1)
+    else:
+        index = tf_context.get_index()
+        job_name = tf_context.get_role_name()
+        cluster_json = tf_context.get_tf_cluster()
+        cluster = tf.train.ClusterSpec(cluster=cluster_json)
+
+        server = tf.train.Server(cluster, job_name=job_name, task_index=index)
+        sess_config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False,
+                                     device_filters=["/job:ps", "/job:worker/task:%d" % index])
+        with tf.device(tf.train.replica_device_setter(worker_device='/job:worker/task:' + str(index), cluster=cluster)):
+            reader = FlinkReader(tf_context)
+
+            with tf.train.ChiefSessionCreator(master=server.target, config=sess_config).create_session() as sess:
+                while True:
+                    batch = reader.next_batch(sess)
+                    tf.logging.info(str(batch))
+                    if batch is None:
+                        break
+                sys.stdout.flush()
 ```
 
 
