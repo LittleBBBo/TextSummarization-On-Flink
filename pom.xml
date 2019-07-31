@@ -16,15 +16,11 @@
         <flink.version>1.8.0</flink.version>
         <flink-ml.version>1.9-SNAPSHOT</flink-ml.version>
         <flink-ml-tensorflow.version>0.1.0</flink-ml-tensorflow.version>
+        <kafka.version>2.3.0</kafka.version>
     </properties>
 
 
     <dependencies>
-<!--        <dependency>-->
-<!--            <groupId>org.apache.flink</groupId>-->
-<!--            <artifactId>flink-core</artifactId>-->
-<!--            <version>${flink.version}</version>-->
-<!--        </dependency>-->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-ml-lib</artifactId>
@@ -47,6 +43,16 @@
             <version>${flink.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka_2.11</artifactId>
+            <version>${kafka.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>${kafka.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.curator</groupId>
             <artifactId>curator-framework</artifactId>

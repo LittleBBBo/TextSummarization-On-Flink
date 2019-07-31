@@ -16,10 +16,10 @@ public interface HasInferenceOutputCols<T> extends WithParams<T> {
             .build();
 
     default String[] getInferenceOutputCols() {
-        return (String[])this.get(INFERENCE_OUTPUT_COLS);
+        return get(INFERENCE_OUTPUT_COLS);
     }
 
     default T setInferenceOutputCols(String... value) {
-        return this.set(INFERENCE_OUTPUT_COLS, value);
+        return set(INFERENCE_OUTPUT_COLS, value);
     }
 }

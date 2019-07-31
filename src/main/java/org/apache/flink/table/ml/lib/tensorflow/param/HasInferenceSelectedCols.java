@@ -16,10 +16,10 @@ public interface HasInferenceSelectedCols<T> extends WithParams<T> {
             .build();
 
     default String[] getInferenceSelectedCols() {
-        return (String[])this.get(INFERENCE_SELECTED_COLS);
+        return get(INFERENCE_SELECTED_COLS);
     }
 
     default T setInferenceSelectedCols(String... value) {
-        return this.set(INFERENCE_SELECTED_COLS, value);
+        return set(INFERENCE_SELECTED_COLS, value);
     }
 }

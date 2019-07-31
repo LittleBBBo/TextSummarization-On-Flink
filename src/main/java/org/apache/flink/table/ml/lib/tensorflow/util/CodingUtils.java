@@ -15,8 +15,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 
-public class Utils {
-    private static Logger LOG = LoggerFactory.getLogger(Utils.class);
+public class CodingUtils {
+    private static Logger LOG = LoggerFactory.getLogger(CodingUtils.class);
 
     /**
      * Map DataTypes list to TypeInformation list
@@ -158,7 +158,7 @@ public class Utils {
 //        TypeInformation[] encodeTypes = encodeSchema.getFieldTypes();
 //        DataTypes[] encodeDataTypes = Arrays
 //                .stream(encodeTypes)
-//                .map(Utils::typeInformationToDataTypes)
+//                .map(CodingUtils::typeInformationToDataTypes)
 //                .toArray(DataTypes[]::new);
 //        configureExampleCoding(config, encodeNames, encodeDataTypes, decodeNames, decodeTypes, entryType, entryClass);
 //    }
@@ -170,7 +170,7 @@ public class Utils {
 //        TypeInformation[] decodeTypes = decodeSchema.getFieldTypes();
 //        DataTypes[] decodeDataTypes = Arrays
 //                .stream(decodeTypes)
-//                .map(Utils::typeInformationToDataTypes)
+//                .map(CodingUtils::typeInformationToDataTypes)
 //                .toArray(DataTypes[]::new);
 //        configureExampleCoding(config, encodeNames, encodeTypes, decodeNames, decodeDataTypes, entryType, entryClass);
 //    }
@@ -179,7 +179,7 @@ public class Utils {
                                               ExampleCodingConfig.ObjectType entryType, Class entryClass) throws RuntimeException {
         DataTypes[] encodeDataTypes = Arrays
                 .stream(encodeTypes)
-                .map(Utils::typeInformationToDataTypes)
+                .map(CodingUtils::typeInformationToDataTypes)
                 .toArray(DataTypes[]::new);
         configureEncodeExampleCoding(config, encodeNames, encodeDataTypes, entryType, entryClass);
     }
@@ -188,7 +188,7 @@ public class Utils {
                                               ExampleCodingConfig.ObjectType entryType, Class entryClass) throws RuntimeException {
         DataTypes[] decodeDataTypes = Arrays
                 .stream(decodeTypes)
-                .map(Utils::typeInformationToDataTypes)
+                .map(CodingUtils::typeInformationToDataTypes)
                 .toArray(DataTypes[]::new);
         configureDecodeExampleCoding(config, decodeNames, decodeDataTypes, entryType, entryClass);
     }

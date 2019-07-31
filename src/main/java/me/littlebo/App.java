@@ -1,4 +1,4 @@
-package org.apache.flink.table.ml.lib.tensorflow.app;
+package me.littlebo;
 
 import com.alibaba.flink.ml.operator.util.DataTypes;
 import org.apache.flink.api.java.ExecutionEnvironment;
@@ -36,27 +36,28 @@ public class App {
     public static final String kafkaAddress = "127.0.0.1:9092";
 
     public static final Logger LOG = LoggerFactory.getLogger(App.class);
+    private static final String projectDir = SysUtils.getProjectRootDir();
     public static final String[] scripts = {
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/run_summarization.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/__init__.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/attention_decoder.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/batcher.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/beam_search.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/data.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/decode.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/inspect_checkpoint.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/model.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/util.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/flink_writer.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/train.py",
+            projectDir + "/src/main/python/pointer-generator/run_summarization.py",
+            projectDir + "/src/main/python/pointer-generator/__init__.py",
+            projectDir + "/src/main/python/pointer-generator/attention_decoder.py",
+            projectDir + "/src/main/python/pointer-generator/batcher.py",
+            projectDir + "/src/main/python/pointer-generator/beam_search.py",
+            projectDir + "/src/main/python/pointer-generator/data.py",
+            projectDir + "/src/main/python/pointer-generator/decode.py",
+            projectDir + "/src/main/python/pointer-generator/inspect_checkpoint.py",
+            projectDir + "/src/main/python/pointer-generator/model.py",
+            projectDir + "/src/main/python/pointer-generator/util.py",
+            projectDir + "/src/main/python/pointer-generator/flink_writer.py",
+            projectDir + "/src/main/python/pointer-generator/train.py",
     };
     private static final String hyperparameter_key = "TF_Hyperparameter";
     public static final String[] inference_hyperparameter = {
-            "run_summarization.py", // first param is uesless but required
+            "run_summarization.py", // first param is uesless but placeholder
             "--mode=decode",
-            "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test/0*",
-            "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
-            "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
+            "--data_path=" + projectDir + "/data/cnn-dailymail/cnn_stories_test/0*",
+            "--vocab_path=" + projectDir + "/data/cnn-dailymail/finished_files/vocab",
+            "--log_root=" + projectDir + "/log",
             "--exp_name=pretrained_model_tf1.2.1",
             "--batch_size=2", // default to 16
             "--max_enc_steps=400",
@@ -66,11 +67,11 @@ public class App {
             "--inference=1",
     };
     public static final String[] train_hyperparameter = {
-            "run_summarization.py", // first param is uesless but required
+            "run_summarization.py", // first param is uesless but placeholder
             "--mode=train",
-            "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/train_*",
-            "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
-            "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
+            "--data_path=" + projectDir + "/data/cnn-dailymail/finished_files/chunked/train_*",
+            "--vocab_path=" + projectDir + "/data/cnn-dailymail/finished_files/vocab",
+            "--log_root=" + projectDir + "/log",
             "--exp_name=pretrained_model_tf1.2.1",
             "--batch_size=2", // default to 16
             "--max_enc_steps=400",

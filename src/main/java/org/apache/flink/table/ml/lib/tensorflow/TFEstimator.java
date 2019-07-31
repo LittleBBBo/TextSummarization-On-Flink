@@ -4,8 +4,6 @@ import com.alibaba.flink.ml.tensorflow.client.TFConfig;
 import com.alibaba.flink.ml.tensorflow.client.TFUtils;
 import com.alibaba.flink.ml.tensorflow.coding.ExampleCodingConfig;
 import com.alibaba.flink.ml.util.MLConstants;
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.api.core.Estimator;
 import org.apache.flink.ml.api.misc.param.Params;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -14,7 +12,7 @@ import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
 import org.apache.flink.table.ml.lib.tensorflow.param.*;
-import org.apache.flink.table.ml.lib.tensorflow.util.Utils;
+import org.apache.flink.table.ml.lib.tensorflow.util.CodingUtils;
 import org.apache.flink.types.Row;
 
 
@@ -43,7 +41,7 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
             return null;
         } else {
             return new TableSchema(getTrainOutputCols(),
-                    Utils.dataTypesListToTypeInformation(getTrainOutputTypes()));
+                    CodingUtils.dataTypesListToTypeInformation(getTrainOutputTypes()));
         }
     }
 
@@ -56,7 +54,7 @@ public class TFEstimator implements Estimator<TFEstimator, TFModel>, HasClusterC
     }
 
     protected void configureExampleCoding(TFConfig config, TableSchema inputSchema, TableSchema outputSchema) {
-        Utils.configureExampleCoding(config, inputSchema, outputSchema, ExampleCodingConfig.ObjectType.ROW, Row.class);
+        CodingUtils.configureExampleCoding(config, inputSchema, outputSchema, ExampleCodingConfig.ObjectType.ROW, Row.class);
     }
 
     @Override

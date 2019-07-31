@@ -13,7 +13,7 @@ import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
 import org.apache.flink.table.ml.lib.tensorflow.param.*;
-import org.apache.flink.table.ml.lib.tensorflow.util.Utils;
+import org.apache.flink.table.ml.lib.tensorflow.util.CodingUtils;
 import org.apache.flink.types.Row;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +37,7 @@ public class TFModel implements Model<TFModel>, HasClusterConfig<TFModel>, HasIn
 
     protected TableSchema configureOutputSchema() {
         return new TableSchema(getInferenceOutputCols(),
-                Utils.dataTypesListToTypeInformation(getInferenceOutputTypes()));
+                CodingUtils.dataTypesListToTypeInformation(getInferenceOutputTypes()));
     }
 
     protected TFConfig configureTFConfig() {
@@ -49,7 +49,7 @@ public class TFModel implements Model<TFModel>, HasClusterConfig<TFModel>, HasIn
     }
 
     protected void configureExampleCoding(TFConfig config, TableSchema inputSchema, TableSchema outputSchema) {
-        Utils.configureExampleCoding(config, inputSchema, outputSchema, ExampleCodingConfig.ObjectType.ROW, Row.class);
+        CodingUtils.configureExampleCoding(config, inputSchema, outputSchema, ExampleCodingConfig.ObjectType.ROW, Row.class);
     }
 
     @Override

@@ -1,4 +1,4 @@
-package org.apache.flink.table.ml.lib.tensorflow.app;
+package me.littlebo;
 
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;

@@ -16,10 +16,10 @@ public interface HasTrainOutputCols<T> extends WithParams<T> {
             .build();
 
     default String[] getTrainOutputCols() {
-        return (String[])this.get(TRAIN_OUTPUT_COLS);
+        return get(TRAIN_OUTPUT_COLS);
     }
 
     default T setTrainOutputCols(String... value) {
-        return this.set(TRAIN_OUTPUT_COLS, value);
+        return set(TRAIN_OUTPUT_COLS, value);
     }
 }

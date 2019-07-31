@@ -16,10 +16,10 @@ public interface HasTrainSelectedCols<T> extends WithParams<T> {
             .build();
 
     default String[] getTrainSelectedCols() {
-        return (String[])this.get(TRAIN_SELECTED_COLS);
+        return get(TRAIN_SELECTED_COLS);
     }
 
     default T setTrainSelectedCols(String... value) {
-        return this.set(TRAIN_SELECTED_COLS, value);
+        return set(TRAIN_SELECTED_COLS, value);
     }
 }

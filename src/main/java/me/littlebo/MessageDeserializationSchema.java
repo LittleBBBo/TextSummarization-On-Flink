@@ -1,4 +1,4 @@
-package org.apache.flink.table.ml.lib.tensorflow.app;
+package me.littlebo;
 
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;

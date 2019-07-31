@@ -1,3 +1,5 @@
+package me.littlebo;
+
 import com.alibaba.flink.ml.operator.coding.RowCSVCoding;
 import com.alibaba.flink.ml.tensorflow.client.TFConfig;
 import com.alibaba.flink.ml.tensorflow.client.TFUtils;
@@ -14,7 +16,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
-import org.apache.flink.table.ml.lib.tensorflow.util.Utils;
+import org.apache.flink.table.ml.lib.tensorflow.util.CodingUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Deprecated
 public class Summarization {
     private static Logger LOG = LoggerFactory.getLogger(Summarization.class);
     public static final String CONFIG_HYPERPARAMETER = "TF_Hyperparameter";
@@ -106,7 +109,7 @@ public class Summarization {
 
         TableSchema outSchema = new TableSchema(new String[]{"abstract", "reference"},
                 new TypeInformation[]{BasicTypeInfo.STRING_TYPE_INFO, BasicTypeInfo.STRING_TYPE_INFO});
-        Utils.configureExampleCoding(config, input.getSchema(), outSchema, ObjectType.ROW, String.class);
+        CodingUtils.configureExampleCoding(config, input.getSchema(), outSchema, ObjectType.ROW, String.class);
 //        input = input.select("LEN(article) as len, article");
         input.printSchema();
         tableEnv.toRetractStream(input, new RowTypeInfo(BasicTypeInfo.STRING_TYPE_INFO)).print();

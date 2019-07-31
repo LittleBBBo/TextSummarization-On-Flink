@@ -6,7 +6,6 @@ import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.ml.api.core.Pipeline;
 import org.apache.flink.ml.api.core.Transformer;
 import org.apache.flink.ml.api.misc.param.Params;
-import org.apache.flink.ml.params.shared.colname.HasSelectedCols;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
@@ -20,29 +19,30 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TFModelTest {
-    public static final Logger LOG = LoggerFactory.getLogger(TFModelTest.class);
+public class TensorFlowTest {
+    public static final Logger LOG = LoggerFactory.getLogger(TensorFlowTest.class);
+    private static final String projectDir = System.getProperty("user.dir");
     public static final String[] scripts = {
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/run_summarization.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/__init__.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/attention_decoder.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/batcher.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/beam_search.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/data.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/decode.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/inspect_checkpoint.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/model.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/util.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/flink_writer.py",
-            "/Users/bodeng/TextSummarization-On-Flink/src/main/python/pointer-generator/train.py",
+            projectDir + "/src/main/python/pointer-generator/run_summarization.py",
+            projectDir + "/src/main/python/pointer-generator/__init__.py",
+            projectDir + "/src/main/python/pointer-generator/attention_decoder.py",
+            projectDir + "/src/main/python/pointer-generator/batcher.py",
+            projectDir + "/src/main/python/pointer-generator/beam_search.py",
+            projectDir + "/src/main/python/pointer-generator/data.py",
+            projectDir + "/src/main/python/pointer-generator/decode.py",
+            projectDir + "/src/main/python/pointer-generator/inspect_checkpoint.py",
+            projectDir + "/src/main/python/pointer-generator/model.py",
+            projectDir + "/src/main/python/pointer-generator/util.py",
+            projectDir + "/src/main/python/pointer-generator/flink_writer.py",
+            projectDir + "/src/main/python/pointer-generator/train.py",
     };
     private static final String hyperparameter_key = "TF_Hyperparameter";
     public static final String[] inference_hyperparameter = {
-            "run_summarization.py", // first param is uesless but required
+            "run_summarization.py", // first param is uesless but placeholder
             "--mode=decode",
-            "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/cnn_stories_test/0*",
-            "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
-            "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
+            "--data_path=" + projectDir + "/data/cnn-dailymail/cnn_stories_test/0*",
+            "--vocab_path=" + projectDir + "/data/cnn-dailymail/finished_files/vocab",
+            "--log_root=" + projectDir + "/log",
             "--exp_name=pretrained_model_tf1.2.1",
             "--batch_size=4", // default to 16
             "--max_enc_steps=400",
@@ -52,11 +52,11 @@ public class TFModelTest {
             "--inference=1",
     };
     public static final String[] train_hyperparameter = {
-            "run_summarization.py", // first param is uesless but required
+            "run_summarization.py", // first param is uesless but placeholder
             "--mode=train",
-            "--data_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/chunked/train_*",
-            "--vocab_path=/Users/bodeng/TextSummarization-On-Flink/data/cnn-dailymail/finished_files/vocab",
-            "--log_root=/Users/bodeng/TextSummarization-On-Flink/log",
+            "--data_path=" + projectDir + "/data/cnn-dailymail/finished_files/chunked/train_*",
+            "--vocab_path=" + projectDir + "/data/cnn-dailymail/finished_files/vocab",
+            "--log_root=" + projectDir + "/log",
             "--exp_name=pretrained_model_tf1.2.1",
             "--batch_size=4", // default to 16
             "--max_enc_steps=400",
