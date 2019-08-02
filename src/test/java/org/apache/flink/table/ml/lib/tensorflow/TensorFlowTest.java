@@ -172,29 +172,29 @@ public class TensorFlowTest {
         TestingServer server = new TestingServer(2181, true);
 
         // training
-        StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
-        StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
-        Table trainInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
-                "uuid,article,summary,reference");
-        Pipeline unfitPipeline = new Pipeline();
-        unfitPipeline.appendStage(createTransformer())
-                .appendStage(createEstimator());
+//        StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
+//        StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
+//        Table trainInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
+//                "uuid,article,summary,reference");
+//        Pipeline unfitPipeline = new Pipeline();
+//        unfitPipeline.appendStage(createTransformer())
+//                .appendStage(createEstimator());
 
 //        LOG.info("unfitted pipeline json: " + unfitPipeline.toJson());
-        Pipeline fitPipeline = unfitPipeline.fit(tableEnv, trainInput);
+//        Pipeline fitPipeline = unfitPipeline.fit(tableEnv, trainInput);
 //        String fitPipelineJson = fitPipeline.toJson();
 //        LOG.info("fitted pipeline json: " + fitPipelineJson);
-        streamEnv.execute();
+//        streamEnv.execute();
 
         // inference
-        streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
-        tableEnv = StreamTableEnvironment.create(streamEnv);
+        StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.createLocalEnvironment(1);
+        StreamTableEnvironment tableEnv = StreamTableEnvironment.create(streamEnv);
         Table realInput = tableEnv.fromDataStream(streamEnv.fromCollection(createArticleData()),
                 "uuid,article,summary,reference");
-//        Pipeline restoredPipeline = new Pipeline();
+        Pipeline restoredPipeline = new Pipeline();
+        restoredPipeline.appendStage(createTransformer()).appendStage(createModel());
 //        restoredPipeline.loadJson(fitPipelineJson);
-//        Table output = restoredPipeline.transform(tableEnv, realInput);
-        Table output = fitPipeline.transform(tableEnv, realInput);
+        Table output = restoredPipeline.transform(tableEnv, realInput);
         tableEnv.toAppendStream(output, Row.class).print().setParallelism(1);
         streamEnv.execute();
 
