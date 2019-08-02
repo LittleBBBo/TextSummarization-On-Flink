@@ -15,7 +15,7 @@
 
 3. 可能的改进
 
-###1. Implementation of TFEstimator & TFModel
+### 1. Implementation of TFEstimator & TFModel
 
 TFEstimator与TFModel是一个具体的实现类，理论上能运行任何基于Flink-AI-Extended扩展的TF算法，通过一些通用化的参数配置将Flink-AI-Extended的调用过程完全封装起来，目的是让用户仅从自己对TF的知识就能简单的构造一个TF算法的estimator或model。
 
@@ -790,7 +790,7 @@ def test_example_coding_without_decode(context):
 
 
 
-#### \[Issue-8][Flink ML Pipeline] How to restart a estimator from a pre-trained model?
+#### \[Issue-8][Flink ML Pipeline] How to restart an estimator from a pre-trained model?
 
 estimator是否可以从已经训练好的model或者另一个训练到一定程度estimator重新加载，然后接着继续训练？
 
